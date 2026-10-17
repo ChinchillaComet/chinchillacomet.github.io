@@ -1,123 +1,116 @@
 'use strict';
-
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const vm = require('node:vm');
 const test = require('node:test');
-const { ROOT, colorValue, loadArt } = require('./helpers.cjs');
+const {createCanvas, loadImage} = require('@napi-rs/canvas');
+const {ROOT, source} = require('./helpers.cjs');
+const scope = vm.createContext({});
+for (const name of ['pixel.js','typography.js','ambient.js','scene.js']) {
+  vm.runInContext(source(name),scope,{filename:name});
+}
+const {PixelArt:art,PixelTypography:font,PixelScene:scenes,PixelAmbient:ambient}=scope;
+const imageCache = new Map();
+function imageFor(asset) {
+  if(!imageCache.has(asset.id))imageCache.set(asset.id,loadImage(path.join(ROOT,asset.src.split('?')[0])));
+  return imageCache.get(asset.id);
+}
+async function makeScene(width,height) {
+  const asset=scenes.variant(width,height);
+  return scenes.create(width,height,createCanvas,await imageFor(asset),asset);
+}
+function pixels(canvas) {return canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;}
 
-const viewports = [
-  [320, 568], [390, 844], [600, 900], [601, 900],
-  [1440, 900], [1920, 1080], [844, 390]
-];
-const densities = [1, 1.25, 1.5, 2, 3];
-
-test('the shipped lettering matches the native font mask and recorded font file', () => {
-  const { font } = loadArt();
-  const mask = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/welcome-mask.json'), 'utf8'));
-  assert.equal(font.text, 'Welcome');
-  assert.equal(mask.glyphs.map(glyph => glyph.character).join(''), font.text);
-  assert.equal(font.width, mask.width);
-  assert.equal(font.height, mask.height);
-  assert.deepEqual(Array.from(font.rows), mask.rows);
-  assert.equal(font.rows.length, font.height);
-  for (const row of font.rows) {
-    assert.equal(row.length, font.width, 'The glyph mask must be rectangular');
-    assert.match(row, /^[01]+$/, 'The mask must contain only binary pixels');
-  }
-  const originalFont = fs.readFileSync(path.join(ROOT, 'assets/fonts/PressStart2P-Regular.ttf'));
-  assert.equal(crypto.createHash('sha256').update(originalFont).digest('hex'), mask.fontSha256);
+test('Welcome retains the exact font glyphs and is the only visible document text',()=>{
+  const mask=JSON.parse(fs.readFileSync(path.join(ROOT,'assets/welcome-mask.json'),'utf8'));
+  assert.equal(font.text,'Welcome');
+  assert.equal(mask.glyphs.map(g=>g.character).join(''),font.text);
+  assert.deepEqual(Array.from(font.rows),mask.rows);
+  const binary=fs.readFileSync(path.join(ROOT,'assets/fonts/PressStart2P-Regular.ttf'));
+  assert.equal(crypto.createHash('sha256').update(binary).digest('hex'),mask.fontSha256);
+  const body=source('index.html').split('<body>')[1].split('</body>')[0];
+  assert.equal(body.replace(/<[^>]*>/g,'').trim(),'Welcome');
+  assert.match(body,/<h1 class="welcome">Welcome<\/h1>/);
 });
 
-test('every cloud has a transparent perimeter, so its own sprite cannot cut off the art', () => {
-  const { scenes, makeCanvas } = loadArt();
-  for (const [name, cloud] of Object.entries(scenes.cloudSprites(makeCanvas))) {
-    let marked = 0;
-    for (let y = 0; y < cloud.height; y++) for (let x = 0; x < cloud.width; x++) {
-      const pixel = cloud.pixels[y * cloud.width + x];
-      if (pixel) marked++;
-      if (x === 0 || y === 0 || x === cloud.width - 1 || y === cloud.height - 1) {
-        assert.equal(pixel, 0, `${name} touches its own boundary at ${x},${y}`);
+test('all three complete artwork assets decode at the recorded dimensions',async()=>{
+  for(const asset of Object.values(scenes.assets)){
+    const image=await imageFor(asset);
+    assert.equal(image.width,asset.width,asset.id);
+    assert.equal(image.height,asset.height,asset.id);
+  }
+  assert.equal(scenes.variant(390,844).id,'portrait');
+  assert.equal(scenes.variant(1440,900).id,'landscape');
+  assert.equal(scenes.variant(2560,1080).id,'panorama');
+});
+
+test('responsive frames cover the display and preserve square pixels and centred glyphs',async t=>{
+  const cases=[[320,568,1],[320,568,1.5],[390,844,3],[768,1024,2],
+    [1440,900,1],[1440,900,1.25],[1440,900,2],[1920,1080,1],[2560,1080,1],[844,390,2]];
+  for(const [width,height,dpr]of cases)await t.test(`${width}x${height} at ${dpr} density`,async()=>{
+    const grid=art.layout(width,height,dpr);
+    for(const key of ['w','h','scale','canvasWidth','canvasHeight','left','top'])assert.ok(Number.isInteger(grid[key]),key);
+    assert.equal(grid.canvasWidth/grid.w,grid.scale);
+    assert.equal(grid.canvasHeight/grid.h,grid.scale);
+    assert.ok(grid.left<=0&&grid.top<=0);
+    assert.ok(grid.left+grid.canvasWidth>=grid.physicalWidth);
+    assert.ok(grid.top+grid.canvasHeight>=grid.physicalHeight);
+    if(width<=height&&width<=440)assert.ok(grid.w>=width,'Keep phone detail on fractional-density displays');
+    const scene=await makeScene(grid.w,grid.h),title=scene.text;
+    assert.ok(title.x>=1&&title.x+title.width<grid.w);
+    assert.ok(Math.abs(title.x+title.width/2-grid.w/2)<=.5);
+    assert.ok(Math.abs(title.y+title.height/2-grid.h/2)<=.5);
+    assert.ok(scene.fit.x<=0&&scene.fit.y<=0);
+    assert.ok(scene.fit.x+scene.fit.width>=grid.w&&scene.fit.y+scene.fit.height>=grid.h);
+    const canvas=createCanvas(grid.w,grid.h);
+    scene.draw(canvas.getContext('2d'),0,{motion:false});
+    const data=pixels(canvas);
+    for(const offset of [0,(grid.w-1)*4,((grid.h-1)*grid.w)*4,(grid.w*grid.h-1)*4])assert.equal(data[offset+3],255,'No transparent corner');
+    for(let row=0;row<font.height;row++)for(let col=0;col<font.width;col++){
+      if(font.rows[row][col]!=='1')continue;
+      for(let y=0;y<title.scale;y++)for(let x=0;x<title.scale;x++){
+        const i=((title.y+row*title.scale+y)*grid.w+title.x+col*title.scale+x)*4;
+        assert.deepEqual(Array.from(data.subarray(i,i+4)),[255,241,219,255],'Glyph must survive compositing exactly');
       }
     }
-    assert.ok(marked > 0, `${name} must contain visible artwork`);
-  }
-});
-
-test('fractional device density cannot halve the narrow-screen title', () => {
-  const { art, scenes, makeCanvas } = loadArt();
-  const titles = densities.map(dpr => {
-    const grid = art.layout(320, 568, dpr);
-    const title = scenes.create(grid.w, grid.h, makeCanvas).text;
-    return { dpr, glyphScale: title.scale, cssWidth: title.width * grid.scale / dpr };
   });
-  const baseline = titles[0];
-  for (const title of titles) {
-    assert.equal(title.glyphScale, baseline.glyphScale, `DPR ${title.dpr} must preserve the same native glyph enlargement`);
-    // A small size adjustment is inherent to whole physical pixels. A jump to
-    // half-sized lettering is not: the viewport still has room for the word.
-    assert.ok(title.cssWidth / baseline.cssWidth >= 0.8 && title.cssWidth / baseline.cssWidth <= 1.25);
+});
+
+test('the shooting star leads its trail down-left in every composition',async()=>{
+  for(const [width,height]of [[720,450],[390,844],[1280,540]]){
+    const scene=await makeScene(width,height);
+    const early=scene.meteorAt(7.85),later=scene.meteorAt(8.3);
+    assert.ok(early&&later);
+    assert.ok(later.head.x<early.head.x&&later.head.y>early.head.y,'Head moves down-left');
+    for(const frame of [early,later])for(const p of frame.trail){
+      assert.ok(Number.isInteger(p.x)&&Number.isInteger(p.y));
+      assert.ok(p.x>=frame.head.x&&p.y<=frame.head.y,'Tail must stay up-right of its head');
+    }
+    assert.equal(scene.meteorAt(0),null);
+    assert.equal(scene.meteorAt(10),null);
   }
 });
 
-test('responsive scenes keep integer square pixels, an opaque palette and a correctly centred title', async t => {
-  const { art, font, scenes, makeCanvas, audit } = loadArt();
-  const palette = new Set(Object.values(art.P).map(colorValue));
-  const cream = colorValue(art.P.cream);
-  for (const [width, height] of viewports) for (const dpr of densities) {
-    await t.test(`${width}×${height} at ${dpr}× density`, () => {
-      const grid = art.layout(width, height, dpr);
-      for (const key of ['w', 'h', 'scale', 'physicalWidth', 'physicalHeight', 'canvasWidth', 'canvasHeight', 'left', 'top']) {
-        assert.ok(Number.isFinite(grid[key]) && Number.isInteger(grid[key]), `${key} must be a finite physical-pixel integer`);
-      }
-      assert.ok(grid.scale >= 1 && grid.w > 0 && grid.h > 0);
-      assert.equal(grid.canvasWidth / grid.w, grid.scale);
-      assert.equal(grid.canvasHeight / grid.h, grid.scale);
-      assert.ok(grid.left <= 0 && grid.top <= 0);
-      assert.ok(grid.left + grid.canvasWidth >= grid.physicalWidth, 'No uncovered strip on the right');
-      assert.ok(grid.top + grid.canvasHeight >= grid.physicalHeight, 'No uncovered strip along the bottom');
-      assert.ok(Math.abs(grid.left + grid.canvasWidth / 2 - grid.physicalWidth / 2) <= 0.5);
-      assert.ok(Math.abs(grid.top + grid.canvasHeight / 2 - grid.physicalHeight / 2) <= 0.5);
-
-      const scene = scenes.create(grid.w, grid.h, makeCanvas);
-      const title = scene.text;
-      for (const value of [title.x, title.y, title.width, title.height, title.scale]) assert.ok(Number.isInteger(value));
-      assert.ok(title.scale >= 1);
-      assert.equal(title.width, font.width * title.scale);
-      assert.equal(title.height, font.height * title.scale);
-      assert.ok(title.x >= 1 && title.y >= 1, 'Title outline needs a safe margin');
-      assert.ok(title.x + title.width + 1 <= grid.w && title.y + title.height + 2 <= grid.h, 'The complete title and shadow must fit');
-      assert.ok(Math.abs(title.x + title.width / 2 - grid.w / 2) <= 0.5);
-      assert.ok(Math.abs(title.y + title.height / 2 - grid.h / 2) <= 0.5);
-      // Centring stays within one authored pixel after the viewport crop too.
-      assert.ok(Math.abs(grid.left + (title.x + title.width / 2) * grid.scale - grid.physicalWidth / 2) <= grid.scale);
-      assert.ok(Math.abs(grid.top + (title.y + title.height / 2) * grid.scale - grid.physicalHeight / 2) <= grid.scale);
-
-      const withTitle = makeCanvas(grid.w, grid.h);
-      const withoutTitle = makeCanvas(grid.w, grid.h);
-      scene.draw(withTitle.getContext('2d'), 0);
-      scene.draw(withoutTitle.getContext('2d'), 0, { title: false });
-      const expectedLetters = new Set();
-      for (let row = 0; row < font.height; row++) for (let col = 0; col < font.width; col++) {
-        if (font.rows[row][col] !== '1') continue;
-        for (let dy = 0; dy < title.scale; dy++) for (let dx = 0; dx < title.scale; dx++) {
-          const offset = (title.y + row * title.scale + dy) * grid.w + title.x + col * title.scale + dx;
-          expectedLetters.add(offset);
-          assert.equal(withTitle.pixels[offset], cream, 'Every foreground glyph pixel must survive compositing');
-        }
-      }
-      for (let offset = 0; offset < withTitle.pixels.length; offset++) {
-        const pixel = withTitle.pixels[offset];
-        assert.ok(palette.has(pixel), `Every frame pixel must be opaque and in the shared palette: ${pixel.toString(16)}`);
-        if (pixel !== withoutTitle.pixels[offset] && pixel === cream) {
-          assert.ok(expectedLetters.has(offset), 'The title must not gain stray foreground pixels');
-        }
-      }
-      // These timestamps exercise comet, cloud drift, petals and all animation
-      // phases without coupling assertions to a particular frame's composition.
-      for (const time of [1.5, 9, 28.5, 75, 3700]) scene.draw(withTitle.getContext('2d'), time);
-      assert.ok(audit.operations > 0 && audit.copies > 0);
-    });
+test('lake motion never changes pixels outside its reviewed open-water region',async()=>{
+  for(const [width,height]of [[720,450],[390,844],[1280,540]]){
+    const scene=await makeScene(width,height),before=pixels(scene.background);
+    const target=createCanvas(width,height),ctx=target.getContext('2d');
+    ctx.imageSmoothingEnabled=false;ctx.drawImage(scene.background,0,0);
+    ambient.drawWater(ctx,scene.background,scene.waterBands,2.3);
+    const after=pixels(target),allowed=new Uint8Array(width*height);
+    for(const band of scene.waterBands){
+      assert.ok(band.x>=2&&band.x+band.width<=width-2,'Leave a sample margin');
+      allowed.fill(1,band.y*width+band.x,band.y*width+band.x+band.width);
+    }
+    let changed=0;
+    for(let pixel=0;pixel<width*height;pixel++){
+      const i=pixel*4;
+      const different=before[i]!==after[i]||before[i+1]!==after[i+1]||before[i+2]!==after[i+2];
+      if(different){changed++;assert.equal(allowed[pixel],1,'The bank and all non-water artwork must remain still');}
+    }
+    assert.ok(changed>100,'Water should visibly change');
+    assert.deepEqual(pixels(scene.background),before,'Animation cannot accumulate distortion into its source');
   }
 });

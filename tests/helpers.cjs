@@ -7,123 +7,6 @@ const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
 const source = name => fs.readFileSync(path.join(ROOT, name), 'utf8');
-const colorValue = value => (0xff000000 | Number.parseInt(value.slice(1), 16)) >>> 0;
-
-// A deliberately small opaque raster, sufficient for the production renderer's
-// rectangles, exact pixel masks and unfiltered image copies. Invalid operations fail where
-// they happen, rather than being silently rounded by the browser.
-function makeRasterFactory({ rasterize = true } = {}) {
-  const audit = { palette: null, operations: 0, copies: 0 };
-  class Canvas {
-    constructor(width = 300, height = 150) {
-      this._width = width;
-      this._height = height;
-      this.style = {};
-      this.context = new Context(this);
-      this.reset();
-    }
-    reset() { this.pixels = rasterize ? new Uint32Array(this._width * this._height) : null; }
-    get width() { return this._width; }
-    set width(value) { this._width = value; this.reset(); }
-    get height() { return this._height; }
-    set height(value) { this._height = value; this.reset(); }
-    getContext(kind) { assert.equal(kind, '2d'); return this.context; }
-  }
-  function integers(values, operation) {
-    for (const value of values) {
-      assert.ok(Number.isFinite(value) && Number.isInteger(value), `${operation}: expected a finite integer, received ${value}`);
-    }
-  }
-  class Context {
-    constructor(canvas) {
-      this.canvas = canvas;
-      this.fillStyle = '#000000';
-      this.globalAlpha = 1;
-      this.imageSmoothingEnabled = true;
-    }
-    fillRect(x, y, width, height) {
-      integers([x, y, width, height], 'fillRect');
-      assert.equal(this.globalAlpha, 1, 'Pixels must be opaque; alpha would create unplanned colours');
-      assert.match(this.fillStyle, /^#[0-9a-f]{6}$/i, 'Fill colours must be explicit opaque RGB values');
-      if (audit.palette) assert.ok(audit.palette.has(this.fillStyle.toLowerCase()), `Unexpected colour ${this.fillStyle}`);
-      audit.operations++;
-      if (!rasterize) return;
-      const left = Math.max(0, Math.min(x, x + width));
-      const right = Math.min(this.canvas.width, Math.max(x, x + width));
-      const top = Math.max(0, Math.min(y, y + height));
-      const bottom = Math.min(this.canvas.height, Math.max(y, y + height));
-      if (right <= left || bottom <= top) return;
-      const color = colorValue(this.fillStyle);
-      for (let row = top; row < bottom; row++) this.canvas.pixels.fill(color, row * this.canvas.width + left, row * this.canvas.width + right);
-    }
-    getImageData(x, y, width, height) {
-      integers([x, y, width, height], 'getImageData');
-      assert.ok(width > 0 && height > 0);
-      const data = new Uint8ClampedArray(width * height * 4);
-      for (let row = 0; row < height; row++) for (let col = 0; col < width; col++) {
-        const sourceX = x + col, sourceY = y + row;
-        if (sourceX < 0 || sourceY < 0 || sourceX >= this.canvas.width || sourceY >= this.canvas.height) continue;
-        const pixel = this.canvas.pixels[sourceY * this.canvas.width + sourceX];
-        const offset = (row * width + col) * 4;
-        data[offset] = pixel >>> 16 & 255;
-        data[offset + 1] = pixel >>> 8 & 255;
-        data[offset + 2] = pixel & 255;
-        data[offset + 3] = pixel >>> 24;
-      }
-      return { data, width, height };
-    }
-    putImageData(image, x, y, dirtyX = 0, dirtyY = 0, dirtyWidth = image.width, dirtyHeight = image.height) {
-      integers([x, y, dirtyX, dirtyY, dirtyWidth, dirtyHeight], 'putImageData');
-      audit.operations++;
-      const top = Math.max(0, dirtyY), bottom = Math.min(image.height, dirtyY + dirtyHeight);
-      const left = Math.max(0, dirtyX), right = Math.min(image.width, dirtyX + dirtyWidth);
-      for (let row = top; row < bottom; row++) for (let col = left; col < right; col++) {
-        const destinationX = x + col, destinationY = y + row;
-        if (destinationX < 0 || destinationY < 0 || destinationX >= this.canvas.width || destinationY >= this.canvas.height) continue;
-        const offset = (row * image.width + col) * 4;
-        const [red, green, blue, alpha] = image.data.subarray(offset, offset + 4);
-        assert.ok(alpha === 0 || alpha === 255, 'Restored masks must have binary transparency');
-        const pixel = ((alpha << 24) | (red << 16) | (green << 8) | blue) >>> 0;
-        if (alpha && audit.palette) {
-          const rgb = `#${((red << 16) | (green << 8) | blue).toString(16).padStart(6, '0')}`;
-          assert.ok(audit.palette.has(rgb), `Restored mask contains an unexpected colour ${rgb}`);
-        }
-        if (rasterize) this.canvas.pixels[destinationY * this.canvas.width + destinationX] = alpha ? pixel : 0;
-      }
-    }
-    drawImage(image, ...args) {
-      integers(args, 'drawImage');
-      assert.equal(this.globalAlpha, 1, 'Image copies must not blend palette colours');
-      assert.equal(this.imageSmoothingEnabled, false, 'Image copies must disable interpolation');
-      assert.ok(args.length === 2 || args.length === 4, 'This renderer uses full sprites only');
-      const [x, y, width = image.width, height = image.height] = args;
-      assert.ok(width > 0 && height > 0, 'Image copies must have positive dimensions');
-      assert.equal(width % image.width, 0, 'Horizontal scale must be a whole number');
-      assert.equal(height % image.height, 0, 'Vertical scale must be a whole number');
-      assert.equal(width / image.width, height / image.height, 'A source pixel must remain square');
-      audit.copies++;
-      if (!rasterize) return;
-      const scale = width / image.width;
-      const left = Math.max(0, x), right = Math.min(this.canvas.width, x + width);
-      const top = Math.max(0, y), bottom = Math.min(this.canvas.height, y + height);
-      for (let row = top; row < bottom; row++) {
-        const sourceRow = Math.floor((row - y) / scale) * image.width;
-        for (let col = left; col < right; col++) {
-          const color = image.pixels[sourceRow + Math.floor((col - x) / scale)];
-          if (color) this.canvas.pixels[row * this.canvas.width + col] = color;
-        }
-      }
-    }
-  }
-  return { makeCanvas: (w, h) => new Canvas(w, h), audit };
-}
-
-function loadArt(factory = makeRasterFactory()) {
-  const context = vm.createContext({});
-  for (const name of ['pixel.js', 'typography.js', 'garden.js', 'scene.js']) vm.runInContext(source(name), context, { filename: name });
-  factory.audit.palette = new Set(Object.values(context.PixelArt.P).map(value => value.toLowerCase()));
-  return { ...factory, context, art: context.PixelArt, font: context.PixelTypography, scenes: context.PixelScene };
-}
 
 class Events {
   constructor() { this.listeners = new Map(); }
@@ -132,27 +15,54 @@ class Events {
     this.listeners.get(name).add(callback);
   }
   removeEventListener(name, callback) { this.listeners.get(name)?.delete(callback); }
-  dispatch(name) { for (const callback of [...(this.listeners.get(name) || [])]) callback({ type: name, matches: this.matches }); }
+  dispatch(name) {
+    for (const callback of [...(this.listeners.get(name) || [])]) callback({ type: name, matches: this.matches });
+  }
 }
 
-// The scene is replaced only in lifecycle tests: their contract is scheduling,
-// elapsed time and grid changes, rather than the artwork tested independently.
-function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false, hidden = false } = {}) {
-  const factory = makeRasterFactory({ rasterize: false });
-  const art = loadArt(factory);
-  const draws = [], creations = [], raf = new Map(), queries = new Map(), observers = [];
+// Art is tested with the native canvas renderer. This harness isolates image
+// loading, scheduling, accessibility fallback state, and physical canvas sizing.
+function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
+  hidden = false, decode = true, failScene = false, failDraw = false } = {}) {
+  const artContext = vm.createContext({});
+  vm.runInContext(source('pixel.js'), artContext, { filename: 'pixel.js' });
+  vm.runInContext(source('typography.js'), artContext, { filename: 'typography.js' });
+  const art = artContext.PixelArt;
+  const draws = [], creations = [], copies = [], images = [];
+  const raf = new Map(), queries = new Map(), observers = [];
   let nextId = 1;
+  function makeCanvas(w = 300, h = 150) {
+    const canvas = { width: w, height: h, style: {} };
+    const context = {
+      imageSmoothingEnabled: true,
+      fillRect(...values) { assert.ok(values.every(Number.isInteger)); },
+      drawImage(image, x, y, drawWidth, drawHeight) {
+        assert.ok([x, y, drawWidth, drawHeight].every(Number.isInteger));
+        assert.equal(this.imageSmoothingEnabled, false);
+        assert.equal(drawWidth % image.width, 0);
+        assert.equal(drawHeight % image.height, 0);
+        assert.equal(drawWidth / image.width, drawHeight / image.height);
+        copies.push({ image, x, y, width: drawWidth, height: drawHeight });
+      },
+    };
+    canvas.getContext = kind => { assert.equal(kind, '2d'); return context; };
+    return canvas;
+  }
   const container = {
     bounds: { width, height },
     getBoundingClientRect() { return this.bounds; },
-    classList: { values: new Set(), add(value) { this.values.add(value); } }
+    classList: {
+      values: new Set(),
+      add(value) { this.values.add(value); },
+      remove(value) { this.values.delete(value); },
+    },
   };
-  const canvas = factory.makeCanvas(1, 1);
+  const canvas = makeCanvas(1, 1);
   canvas.parentElement = container;
   const document = new Events();
   document.hidden = hidden;
   document.getElementById = id => { assert.equal(id, 'scenery'); return canvas; };
-  document.createElement = tag => { assert.equal(tag, 'canvas'); return factory.makeCanvas(300, 150); };
+  document.createElement = tag => { assert.equal(tag, 'canvas'); return makeCanvas(); };
   const window = new Events();
   window.devicePixelRatio = dpr;
   window.matchMedia = query => {
@@ -169,27 +79,72 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false, 
     observe(element) { assert.equal(element, container); }
   }
   window.ResizeObserver = ResizeObserver;
+  class Image {
+    constructor() {
+      this.naturalWidth = 0; this.naturalHeight = 0; this.complete = false;
+      this.onload = null; this.onerror = null; this.decodeCalls = 0;
+      if (decode) {
+        this.decoded = new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
+        this.decode = () => { this.decodeCalls++; return this.decoded; };
+      }
+      images.push(this);
+    }
+    set src(value) { this._src = value; }
+    get src() { return this._src; }
+    succeed() {
+      this.naturalWidth = this.src.includes('portrait') ? 768 : 1536;
+      this.naturalHeight = this.src.includes('portrait') ? 1365 : 1024;
+      this.complete = true;
+      if (decode) this.resolve();
+      else this.onload?.();
+    }
+    fail() {
+      this.complete = true;
+      if (decode) this.reject(new Error('Simulated image failure'));
+      else this.onerror?.();
+    }
+  }
+  const variants = {
+    landscape: { id: 'landscape', src: './assets/landscape.png', width: 1536, height: 1024 },
+    portrait: { id: 'portrait', src: './assets/portrait.png', width: 768, height: 1365 },
+  };
   const context = vm.createContext({
-    document, window, ResizeObserver, PixelArt: art.art, PixelTypography: art.font,
+    document, window, ResizeObserver, Image, PixelArt: art, PixelTypography: artContext.PixelTypography,
     PixelScene: {
-      create(w, h) {
+      variant(w, h) { return w < h ? variants.portrait : variants.landscape; },
+      create(w, h, make, image, variant) {
+        assert.equal(typeof make, 'function');
+        assert.ok(image.naturalWidth > 0 && image.naturalHeight > 0, 'Scene must receive decoded pixels');
+        assert.equal(image.src, variant.src);
+        if (failScene) throw new Error('Simulated renderer initialization failure');
         const id = creations.length;
-        creations.push({ w, h });
+        creations.push({ w, h, image, variant });
         return {
           draw(target, time) {
+            if (failDraw) throw new Error('Simulated drawing failure');
             draws.push({ id, time });
-            target.fillStyle = art.art.P.sky0;
+            target.fillStyle = art.P.sky0;
             target.fillRect(0, 0, w, h);
-          }
+          },
         };
-      }
+      },
     },
     requestAnimationFrame(callback) { const id = nextId++; raf.set(id, callback); return id; },
-    cancelAnimationFrame(id) { raf.delete(id); }
+    cancelAnimationFrame(id) { raf.delete(id); },
   });
   vm.runInContext(source('main.js'), context, { filename: 'main.js' });
+  const flush = () => new Promise(resolve => setImmediate(resolve));
+  function getImage(which) {
+    const image = typeof which === 'number' ? images[which] : images.find(image => image.src.includes(which));
+    assert.ok(image, `No requested image for ${which}`);
+    return image;
+  }
   return {
-    canvas, container, document, window, draws, creations, queries, raf, art: art.art,
+    canvas, container, document, window, draws, creations, copies, images, queries, raf, art,
+    ready() { return container.classList.values.has('is-ready'); },
+    flush,
+    async resolveImage(which = 0) { getImage(which).succeed(); await flush(); },
+    async rejectImage(which = 0) { getImage(which).fail(); await flush(); },
     frame(now) {
       for (const id of [...raf.keys()]) {
         if (!raf.has(id)) continue;
@@ -214,8 +169,8 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false, 
       window.devicePixelRatio = nextDpr;
       previous.matches = false;
       previous.dispatch('change');
-    }
+    },
   };
 }
 
-module.exports = { ROOT, source, colorValue, makeRasterFactory, loadArt, makePage };
+module.exports = { ROOT, source, makePage };

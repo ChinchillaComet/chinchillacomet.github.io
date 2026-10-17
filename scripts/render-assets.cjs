@@ -2,23 +2,19 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
-const { createCanvas } = require('@napi-rs/canvas');
-const root = path.resolve(__dirname, '..');
-for (const name of ['pixel', 'typography', 'garden', 'scene']) {
-  vm.runInThisContext(fs.readFileSync(path.join(root, name + '.js'), 'utf8'), { filename: name + '.js' });
+const {createCanvas,loadImage}=require('@napi-rs/canvas');
+const root=path.resolve(__dirname,'..');
+for(const name of ['pixel','typography','ambient','scene']){
+  vm.runInThisContext(fs.readFileSync(path.join(root,name+'.js'),'utf8'),{filename:name+'.js'});
 }
-for (const [name, width, height] of [['still.png', 480, 300], ['still-mobile.png', 240, 480]]) {
-  const scene = PixelScene.create(width, height, createCanvas);
-  const canvas = createCanvas(width, height);
-  scene.draw(canvas.getContext('2d'), 0, { title: false });
-  fs.writeFileSync(path.join(root, 'assets', name), canvas.toBuffer('image/png'));
-  if (name === 'still.png') {
-    scene.draw(canvas.getContext('2d'), 0);
-    const preview = createCanvas(width * 3, height * 3);
-    const context = preview.getContext('2d');
-    context.imageSmoothingEnabled = false;
-    context.drawImage(canvas, 0, 0, preview.width, preview.height);
-    fs.writeFileSync(path.join(root, 'assets', 'preview.png'), preview.toBuffer('image/png'));
+(async()=>{
+  for(const [filename,width,height]of [['preview.webp',1440,900],['preview-mobile.webp',390,844]]){
+    const grid=PixelArt.layout(width,height,1),asset=PixelScene.variant(grid.w,grid.h);
+    const image=await loadImage(path.join(root,asset.src.split('?')[0]));
+    const scene=PixelScene.create(grid.w,grid.h,createCanvas,image,asset);
+    const frame=createCanvas(grid.w,grid.h);
+    scene.draw(frame.getContext('2d'),0);
+    fs.writeFileSync(path.join(root,'assets',filename),frame.toBuffer('image/webp',95));
   }
-}
-console.log('Updated desktop and portrait fallback art and the full-page preview.');
+  console.log('Rendered desktop and phone previews from the actual page renderer.');
+})().catch(error=>{console.error(error);process.exitCode=1;});

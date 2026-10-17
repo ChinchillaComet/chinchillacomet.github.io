@@ -1,20 +1,22 @@
-# Regression checks
+# Verification
 
-Run from the repository root with Node.js 18 or newer:
+Install development dependencies and run the suite:
 
 ```sh
-node --test tests/*.test.cjs
+npm ci
+npm test
 ```
 
-The suite uses Node's built-in test runner, an opaque software raster and a small
-DOM/frame scheduler. It needs no browser, package install or network connection.
+`art.test.cjs` uses the same renderer and optimized artwork assets as the page. It
+checks the exact Welcome glyphs, image dimensions and variant selection, complete
+responsive frame coverage, integer display scaling, centred lettering, meteor
+head/tail direction and confinement of moving pixels to the reviewed lake region.
 
-The checks cover the actual cloud clipping regression; the committed lettering
-mask and font-file integrity; palette-only rendering; finite integer drawing
-coordinates; square integer enlargement at several viewport sizes and device
-densities; title placement and glyph survival during compositing; coalesced
-resize handling; density changes; reduced motion; and pausing hidden tabs.
+`lifecycle.test.cjs` uses a small mock DOM and controllable image decodes. It checks
+first paint, cached loads, stale orientation loads, failures, current viewport and
+DPR after loading, reduced motion, page visibility, resize coalescing, zero-size
+recovery and the 24 FPS cap.
 
-These are renderer and lifecycle regression checks. Browser screenshots and a
-visual review are still needed to judge the artwork, native font fallback and
-the browser's final presentation.
+These checks do not judge artistic quality or substitute for browser QA. Review
+rendered desktop, portrait, tablet and panoramic compositions visually. Run
+`npm run render:art` to regenerate the committed desktop and phone previews.
