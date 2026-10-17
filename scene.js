@@ -1,290 +1,159 @@
-/* An original, pixel-by-pixel landscape. No images, fonts, or libraries are fetched. */
+/* Moon garden: designed silhouettes, connected colour clusters, discrete animation. */
 (() => {
   'use strict';
+  const {P,rect,polygon,line,sprite,random}=globalThis.PixelArt;
 
-  const PI = Math.PI;
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-  const mix = (a, b, t) => a.map((v, i) => Math.round(v + (b[i] - v) * t));
-  const rgb = (a) => `rgb(${a.join(',')})`;
-  function random(seed) {
-    return () => {
-      seed |= 0; seed = seed + 0x6D2B79F5 | 0;
-      let t = Math.imul(seed ^ seed >>> 15, 1 | seed);
-      t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
-      return ((t ^ t >>> 14) >>> 0) / 4294967296;
-    };
+  // Complete masks with transparent padding: cloud marks cannot hit their own bounds.
+  function cloudSprites(makeCanvas) {
+    const wide=makeCanvas(164,42),c=wide.getContext('2d');
+    polygon(c,[[5,27],[10,27],[10,24],[18,24],[18,20],[26,20],[26,15],[33,15],[33,10],[40,10],[40,7],[51,7],[51,5],[61,5],[61,7],[67,7],[67,11],[72,11],[72,15],[79,15],[79,13],[86,13],[86,10],[95,10],[95,12],[104,12],[104,16],[110,16],[110,19],[120,19],[120,22],[127,22],[127,25],[137,25],[137,28],[147,28],[147,30],[157,30],[157,32],[148,32],[148,34],[125,34],[125,36],[97,36],[97,35],[68,35],[68,37],[36,37],[36,35],[18,35],[18,32],[5,32]],P.sky4);
+    polygon(c,[[11,27],[19,27],[19,23],[27,23],[27,18],[35,18],[35,12],[42,12],[42,9],[52,9],[52,7],[60,7],[60,9],[65,9],[65,13],[70,13],[70,17],[79,17],[79,16],[86,16],[86,13],[95,13],[95,15],[103,15],[103,19],[112,19],[112,22],[122,22],[122,25],[135,25],[135,29],[147,29],[147,31],[110,31],[110,29],[92,29],[92,31],[67,31],[67,29],[43,29],[43,31],[22,31],[22,29],[11,29]],P.sky6);
+    polygon(c,[[26,22],[29,18],[37,18],[37,13],[44,13],[44,10],[53,10],[53,8],[59,8],[59,10],[64,10],[64,14],[68,14],[68,17],[60,17],[60,15],[48,15],[48,18],[40,18],[40,22]],P.sky8);
+    polygon(c,[[78,21],[84,21],[84,18],[90,18],[90,15],[95,15],[95,17],[102,17],[102,20],[107,20],[107,22],[96,22],[96,20],[87,20],[87,23],[78,23]],P.sky7);
+    rect(c,48,23,20,2,P.sky7);rect(c,55,25,21,1,P.sky7);
+    rect(c,113,27,16,1,P.sky7);rect(c,31,33,22,1,P.sky5);rect(c,93,33,22,1,P.sky5);
+    const thin=makeCanvas(116,25),t=thin.getContext('2d');
+    polygon(t,[[4,16],[12,16],[12,13],[24,13],[24,10],[36,10],[36,7],[47,7],[47,5],[57,5],[57,7],[68,7],[68,10],[81,10],[81,13],[92,13],[92,16],[105,16],[105,18],[112,18],[112,20],[91,20],[91,22],[53,22],[53,21],[24,21],[24,19],[4,19]],P.sky5);
+    polygon(t,[[13,15],[25,15],[25,12],[37,12],[37,9],[48,9],[48,7],[56,7],[56,9],[66,9],[66,12],[80,12],[80,15],[92,15],[92,17],[75,17],[75,16],[60,16],[60,14],[40,14],[40,16],[13,16]],P.sky7);
+    rect(t,39,11,15,1,P.sky8);rect(t,27,18,24,1,P.sky6);rect(t,65,19,23,1,P.sky6);
+    return {wide,thin};
   }
-  function rect(c, x, y, w, h, color) {
-    c.fillStyle = color;
-    c.fillRect(Math.round(x), Math.round(y), Math.round(w), Math.round(h));
+  function cross(c,x,y,size,color) {
+    rect(c,x,y-size,1,2*size+1,color);rect(c,x-size,y,2*size+1,1,color);
   }
-  function ellipse(c, x, y, rx, ry, color) {
-    for (let j = -Math.floor(ry); j <= ry; j++) {
-      const span = Math.floor(rx * Math.sqrt(Math.max(0, 1 - j * j / (ry * ry))));
-      rect(c, x - span, y + j, span * 2 + 1, 1, color);
-    }
-  }
-  function polygon(c, points, color) {
-    const low = Math.floor(Math.min(...points.map(p => p[1])));
-    const high = Math.ceil(Math.max(...points.map(p => p[1])));
-    for (let y = low; y < high; y++) {
-      const hits = [];
-      for (let i = 0; i < points.length; i++) {
-        const a = points[i], b = points[(i + 1) % points.length];
-        if ((a[1] <= y && b[1] > y) || (b[1] <= y && a[1] > y)) {
-          hits.push(a[0] + (y - a[1]) / (b[1] - a[1]) * (b[0] - a[0]));
-        }
-      }
-      hits.sort((a, b) => a - b);
-      for (let i = 0; i < hits.length - 1; i += 2) {
-        rect(c, Math.ceil(hits[i]), y, Math.floor(hits[i + 1]) - Math.ceil(hits[i]) + 1, 1, color);
-      }
-    }
-  }
-  function line(c, x0, y0, x1, y1, color) {
-    x0 = Math.round(x0); y0 = Math.round(y0); x1 = Math.round(x1); y1 = Math.round(y1);
-    const dx = Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    const dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    let error = dx + dy;
-    while (true) {
-      rect(c, x0, y0, 1, 1, color);
-      if (x0 === x1 && y0 === y1) break;
-      const e2 = error * 2;
-      if (e2 >= dy) { error += dy; x0 += sx; }
-      if (e2 <= dx) { error += dx; y0 += sy; }
-    }
-  }
-  function star(c, x, y, size, color) {
-    rect(c, x, y - size, 1, size * 2 + 1, color);
-    rect(c, x - size, y, size * 2 + 1, 1, color);
-    if (size > 2) rect(c, x - 1, y - 1, 3, 3, color);
-  }
-  const SKY = [
-    [0, [29, 29, 59]], [.20, [53, 43, 79]], [.43, [104, 71, 112]],
-    [.66, [164, 108, 142]], [.84, [210, 148, 158]], [1, [244, 188, 166]]
+  const moonRows=[
+    '.............aa.............','..........aaab..............','........aabbb...............',
+    '......aabbbb................','.....abbbbb.................','....abbbbbb.................',
+    '...abbbbbb..................','..abbbbbbb..................','..abbbbbbb..................',
+    '.abbbbbbbb..................','.abbbbbbbb..................','.abbbbbbbbb.................',
+    'abbbbbbbbbb.................','abbbbbbbbbbb................','abbbbbbbbbbbb...............',
+    'abbbbbbbbbbbbb..............','abbbbbbbbbbbbbbb............','.abbbbbbbbbbbbbbbb..........',
+    '.abbbbbbbbbbbbbbbbbbb.......','.abbbbbbbbbbbbbbbbbbbbbbbba.','..abbbbbbbbbbbbbbbbbbbbbaa..',
+    '...abbbbbbbbbbbbbbbbbbaa....','....aabbbbbbbbbbbbbbaa......','......aabbbbbbbbbbaa........',
+    '........aaabbbbaaa..........','...........aaaa.............'
   ];
-  function skyColor(t) {
-    for (let i = 1; i < SKY.length; i++) {
-      if (t <= SKY[i][0]) return rgb(mix(SKY[i - 1][1], SKY[i][1], (t - SKY[i - 1][0]) / (SKY[i][0] - SKY[i - 1][0])));
+  function create(w,h,makeCanvas) {
+    const portrait=w/h<.85,horizon=Math.round(h*(portrait?.635:.625));
+    const rng=random(93811),layer=()=>makeCanvas(w,h);
+    const sky=layer(),land=layer(),water=layer(),garden=layer(),title=layer();
+    const sc=sky.getContext('2d'),lc=land.getContext('2d'),wc=water.getContext('2d'),gc=garden.getContext('2d'),tc=title.getContext('2d');
+    // Ordered interpolation between adjacent palette entries softens the sky without
+    // introducing filtered colours. Foliage, clouds and other forms remain solid clusters.
+    const skyRamp=[P.sky0,P.sky011,P.sky012,P.sky1,P.sky121,P.sky122,P.sky2,P.sky231,P.sky232,P.sky3,P.sky341,P.sky342,P.sky4,P.sky451,P.sky452,P.sky5,P.sky561,P.sky562,P.sky6,P.sky671,P.sky672,P.sky7,P.sky781,P.sky782,P.sky8];
+    const dither=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+    for(let y=0;y<=horizon;y++) {
+      const position=Math.pow(y/horizon,1.18)*(skyRamp.length-1);
+      const index=Math.min(skyRamp.length-2,Math.floor(position)),threshold=(position-index)*16;
+      rect(sc,0,y,w,1,skyRamp[index]);
+      for(let x=0;x<w;x++)if(dither[y%4][x%4]<threshold)rect(sc,x,y,1,1,skyRamp[index+1]);
     }
-    return rgb(SKY[SKY.length - 1][1]);
-  }
-
-  function create(w, h, makeCanvas) {
-    const rng = random(719042);
-    const horizon = Math.round(h * .625);
-    const small = w / h < .8;
-    const moon = { x: Math.round(w * (small ? .72 : .75)), y: Math.round(h * (small ? .225 : .20)), r: small ? 12 : 15 };
-    const layer = () => { const cv = makeCanvas(w, h); cv.width = w; cv.height = h; return cv; };
-    const sky = layer(), land = layer(), water = layer(), garden = layer();
-    const sc = sky.getContext('2d'), lc = land.getContext('2d'), wc = water.getContext('2d'), gc = garden.getContext('2d');
-    [sc, lc, wc, gc].forEach(c => { c.imageSmoothingEnabled = false; });
-
-    // Quiet, dithered dusk: every colour is drawn on the same integer pixel grid.
-    for (let y = 0; y < horizon + 1; y++) {
-      const t = Math.floor(y / 2) * 2 / horizon;
-      rect(sc, 0, y, w, 1, skyColor(t));
-      if (y % 2) for (let x = y % 4; x < w; x += 4) rect(sc, x, y, 1, 1, skyColor((y + 1) / horizon));
+    const moon={x:Math.round(w*(portrait?.73:.76)),y:Math.round(h*(portrait?.205:.17))};
+    sprite(sc,moonRows,moon.x-14,moon.y-13,{a:P.light,b:P.cream});
+    const stars=Array.from({length:Math.round(w/12)},(_,i)=>({x:Math.floor(rng()*w),y:Math.floor(rng()*h*.37),phase:i%8,size:i%11===0?1:0}));
+    // A central saddle keeps the lettering clear; ridges have no random perturbation.
+    const relief=portrait?.58:Math.min(1,h/270);
+    const point=([x,depth])=>[Math.round(x*w),Math.round(horizon-depth*relief)];
+    function ridge(points,color,facets) {
+      polygon(lc,[...points.map(point),[w,horizon],[0,horizon]],color);
+      for(const [outline,tint]of facets)polygon(lc,outline.map(point),tint);
     }
-    // Faint celestial dust, deliberately sparse around the central title.
-    for (let i = 0; i < w * .44; i++) {
-      const x = Math.floor(rng() * w), y = Math.floor(rng() * horizon * .66);
-      if (rng() < y / horizon) continue;
-      rect(sc, x, y, 1, 1, ['#625373', '#736285', '#978199'][Math.floor(rng() * 3)]);
+    ridge([[0,38],[.06,43],[.115,58],[.16,72],[.20,68],[.25,49],[.29,43],[.345,27],[.40,22],[.47,14],[.53,18],[.60,26],[.655,39],[.71,51],[.77,81],[.795,77],[.84,64],[.88,57],[.94,45],[1,52]],P.sky5,[
+      [[[.16,72],[.178,57],[.17,52],[.204,42],[.22,33],[.207,28],[.25,5],[.32,0],[.30,35],[.25,49],[.20,68]],P.sky4],
+      [[[.77,81],[.79,68],[.78,61],[.806,54],[.81,45],[.85,37],[.83,28],[.88,9],[.99,0],[.94,45],[.88,57],[.84,64],[.795,77]],P.sky4],
+      [[[.16,72],[.12,57],[.135,59],[.148,62],[.15,60],[.162,65]],P.sky6],
+      [[[.77,81],[.733,63],[.748,68],[.752,65],[.766,71]],P.sky6]
+    ]);
+    ridge([[0,37],[.055,33],[.12,48],[.18,34],[.25,31],[.30,22],[.37,13],[.45,9],[.53,13],[.59,20],[.635,32],[.67,43],[.71,40],[.77,29],[.81,23],[.88,36],[.93,28],[1,34]],P.midStone,[
+      [[[.12,48],[.15,26],[.145,19],[.185,11],[.25,0],[.31,0],[.25,31],[.18,34]],P.stone],
+      [[[.67,43],[.685,31],[.68,26],[.718,16],[.742,8],[.82,0],[.81,23],[.77,29],[.71,40]],P.stone]
+    ]);
+    ridge([[0,16],[.09,20],[.16,18],[.22,12],[.31,10],[.38,5],[.48,3],[.56,6],[.65,10],[.75,13],[.82,17],[.91,15],[1,19]],P.water0,[]);
+    for(let x=0,i=0;x<w;x+=5,i++) {
+      const th=[4,7,3,5,8,4,6,3][i%8],base=horizon-1;
+      rect(lc,x,base-th,1,th,P.teal0);
+      for(let j=2;j<th;j+=2)rect(lc,x-Math.floor(j/3),base-th+j,1+2*Math.floor(j/3),1,P.teal0);
     }
-    const stars = Array.from({ length: Math.round(w * .12) }, () => ({
-      x: Math.floor(rng() * w), y: Math.floor(rng() * horizon * .67),
-      phase: rng() * PI * 2, size: rng() > .91 ? 2 : 0, speed: .25 + rng() * .3
-    }));
-
-    // The crescent is a binary pixel mask, never a blurred circle.
-    for (let r = moon.r + 8; r > moon.r; r -= 3) {
-      sc.globalAlpha = .018;
-      ellipse(sc, moon.x, moon.y, r, r, '#ffddb8');
-    }
-    sc.globalAlpha = 1;
-    for (let yy = -moon.r; yy <= moon.r; yy++) {
-      for (let xx = -moon.r; xx <= moon.r; xx++) {
-        if (xx * xx + yy * yy > moon.r * moon.r) continue;
-        const cut = (xx - 6) ** 2 + (yy + 5) ** 2 < (moon.r - 1) ** 2;
-        if (!cut) rect(sc, moon.x + xx, moon.y + yy, 1, 1, xx < -8 || yy > 10 ? '#edbca3' : '#ffead0');
-      }
-    }
-    star(sc, moon.x - moon.r - 11, moon.y + 5, 2, '#dfb4b3');
-    rect(sc, moon.x + moon.r + 9, moon.y - 12, 1, 1, '#fff1d0');
-
-    // Silhouettes are scan-converted polygons, with hand-placed ridgelines.
-    function mountain(points, color, shadow, detail) {
-      const relief = small ? .64 : 1;
-      const pts = points.map(([x, y]) => [x * w, horizon - (horizon - y * h) * relief]);
-      const ridge = [];
-      for (let i = 0; i < pts.length - 1; i++) {
-        const a = pts[i], b = pts[i + 1];
-        const steps = Math.max(1, Math.floor((b[0] - a[0]) / 3));
-        for (let s = 0; s < steps; s++) {
-          const t = s / steps;
-          ridge.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t + Math.sin(t * PI) * (rng() * 3 - 1)]);
-        }
-      }
-      ridge.push(pts[pts.length - 1]);
-      polygon(lc, [...ridge, [w, horizon + 3], [0, horizon + 3]], color);
-      for (let i = 1; i < pts.length - 1; i++) {
-        if (pts[i][1] >= pts[i - 1][1] || pts[i][1] >= pts[i + 1][1]) continue;
-        const p = pts[i];
-        polygon(lc, [p, [p[0] + 6, p[1] + 11], [p[0] - 5, p[1] + 16], [p[0] + 18, horizon], [pts[i + 1][0], horizon], pts[i + 1]], shadow);
-        line(lc, p[0] - 1, p[1] + 2, p[0] - 12, p[1] + 12, detail);
-        for (let s = 0; s < 14; s++) {
-          const depth = 8 + rng() * Math.max(1, horizon - p[1] - 8);
-          const xx = p[0] - depth * .52 - rng() * depth * .42;
-          const yy = p[1] + depth;
-          lc.globalAlpha = .22;
-          rect(lc, xx, yy, 2 + rng() * 8, 1, detail);
-        }
-        lc.globalAlpha = 1;
-      }
-    }
-    mountain([[0,.52],[.05,.49],[.12,.51],[.19,.43],[.24,.47],[.31,.42],[.38,.49],[.43,.47],[.49,.53],[.55,.46],[.63,.49],[.71,.40],[.77,.45],[.85,.43],[.91,.50],[1,.45]], '#ad7f9f', '#9d7299', '#cb94ac');
-    mountain([[0,.55],[.10,.47],[.14,.50],[.20,.53],[.28,.49],[.34,.54],[.44,.58],[.52,.52],[.58,.55],[.65,.48],[.70,.53],[.75,.55],[.83,.49],[.9,.54],[1,.48]], '#735e88', '#645a80', '#9c789c');
-    mountain([[0,.56],[.09,.55],[.18,.58],[.27,.59],[.34,.58],[.42,.615],[.54,.61],[.66,.60],[.71,.57],[.80,.58],[.88,.55],[.97,.57],[1,.55]], '#4d506f', '#444b68', '#786585');
-    // Distant conifers and the last pink edge of daylight on the water.
-    for (let x = 0; x < w; x += 2 + Math.floor(rng() * 3)) {
-      const centerDistance = Math.abs(x / w - .5);
-      const baseY = horizon - 2 - Math.round(Math.sin(x * .037) * 2);
-      const th = 2 + Math.floor(rng() * (4 + centerDistance * 11));
-      polygon(lc, [[x, baseY - th], [x - th * .32, baseY], [x + th * .32, baseY]], '#3b4860');
-      rect(lc, x, baseY - th, 1, th + 2, '#3b4860');
-    }
-    rect(lc, 0, horizon, w, 2, '#bd89a0');
-    for (let x = 0; x < w; x += 16) rect(lc, x, horizon + 1, 7 + rng() * 12, 1, '#f0b6ac');
-
-    // Deep teal water, with the sky's rose colours gathered around the horizon.
-    const waterTop = [116, 102, 135], waterBottom = [24, 52, 65];
-    for (let y = horizon + 2; y < h; y++) {
-      const t = (y - horizon) / (h - horizon);
-      rect(wc, 0, y, w, 1, rgb(mix(waterTop, waterBottom, Math.pow(t, .52))));
-      if (y % 2 === 0) {
-        for (let j = 0; j < w / (16 + t * 14); j++) {
-          const x = rng() * w;
-          rect(wc, x, y, 2 + rng() * (3 + t * 14), 1, rgb(mix([163, 122, 153], [41, 69, 82], t)));
-        }
-      }
-    }
-    // Reflected mountain masses fade into the lake instead of mirroring perfectly.
-    for (let i = 0; i < 125; i++) {
-      const y = horizon + 3 + Math.floor(rng() * h * .14);
-      const x = rng() * w;
-      const edge = Math.abs(x / w - .5);
-      if (rng() > edge + .15) continue;
-      rect(wc, x, y, 3 + rng() * 19, 1, '#535c7b');
-    }
-    const ripples = Array.from({ length: Math.round(w * .35) }, () => ({
-      x: rng() * w, y: horizon + 4 + rng() * (h - horizon) * .78,
-      width: 1 + rng() * 10, phase: rng() * PI * 2, speed: .3 + rng() * .45,
-      color: ['#b091b0', '#897d9e', '#6e93a2', '#5e8896'][Math.floor(rng() * 4)]
-    }));
-
-    // Small cloud sprites drift a pixel at a time. Their lit tops face the dusk.
-    function makeCloud(width, height, seed) {
-      const cv = makeCanvas(width, height), c = cv.getContext('2d'), cr = random(seed);
-      const lobes = [];
-      for (let x = 5; x < width - 6; x += 6 + cr() * 9) {
-        const f = Math.sin(x / width * PI);
-        lobes.push([x, height * .58 - f * height * .16, 8 + cr() * 15, 2 + f * height * (.20 + cr() * .12)]);
-      }
-      for (const [x,y,rx,ry] of lobes) ellipse(c, x, y, rx, ry, '#a47399');
-      for (const [x,y,rx,ry] of lobes) ellipse(c, x - 2, y - 2, rx * .90, ry * .67, '#c68da9');
-      for (const [x,y,rx,ry] of lobes) ellipse(c, x - 3, y - 3, rx * .72, Math.max(1, ry * .39), '#e5acae');
-      for (let i = 0; i < width * .35; i++) {
-        const x = cr() * width, y = height * .60 + cr() * height * .2;
-        rect(c, x, y, 2 + cr() * 13, 1, cr() > .5 ? '#92668f' : '#b17c9d');
-      }
-      // Finely tapered horizontal wisps at the bottom.
-      for (let i = 0; i < 5; i++) rect(c, width * .18 + cr() * width * .30, height * .73 + i, width * .4 * (1 - i / 5), 1, '#a47399');
-      return cv;
-    }
-    const clouds = [
-      { cv: makeCloud(small ? 86 : 154, 25, 28), x: w * .22, y: h * .16, speed: .26, alpha: .80 },
-      { cv: makeCloud(small ? 63 : 113, 18, 34), x: w * .77, y: h * .325, speed: -.18, alpha: .66 },
-      { cv: makeCloud(small ? 95 : 177, 16, 90), x: w * .23, y: h * .345, speed: .16, alpha: .51 }
+    rect(lc,0,horizon-1,w,1,P.water2);
+    rect(wc,0,horizon,w,h-horizon,P.water0);
+    rect(wc,0,horizon,w,4,P.water2);
+    rect(wc,0,horizon,w,1,P.water3);
+    // Interrupted horizontal planes, getting sparser towards the near water.
+    const waterPlanes=[
+      [4,0,.33],[4,.37,.63],[5,.08,.71],[6,0,.22],[6,.30,.38],[6,.77,.23],
+      [8,.03,.42],[8,.52,.48],[10,0,.18],[10,.24,.51],[10,.84,.16],
+      [12,.04,.24],[12,.34,.27],[12,.72,.25],[14,0,.13],[14,.20,.37],[14,.67,.33],
+      [17,.02,.21],[17,.28,.24],[17,.65,.31],[20,.09,.27],[20,.44,.16],[20,.77,.20],
+      [24,.03,.14],[24,.22,.17],[24,.57,.21],[24,.88,.12],
+      [29,.12,.13],[29,.35,.10],[29,.62,.19],[34,.01,.17],[34,.45,.10],[34,.83,.11]
     ];
-    let anchors = {};
-    if (globalThis.PixelGarden) anchors = globalThis.PixelGarden.draw(gc, w, h, 1337) || {};
-    const petals = Array.from({ length: small ? 19 : 32 }, () => ({
-      x: rng() * w, y: rng() * h, vx: 1.7 + rng() * 2.5,
-      vy: 1.6 + rng() * 2.8, phase: rng() * PI * 2, size: rng() > .72 ? 2 : 1
-    }));
-    const fireflies = Array.from({ length: small ? 12 : 22 }, () => ({
-      x: rng() * w, y: h * (.73 + rng() * .23), phase: rng() * PI * 2, speed: .4 + rng() * .6
-    }));
-    function draw(c, time = 0) {
-      c.imageSmoothingEnabled = false;
-      c.globalAlpha = 1;
-      c.drawImage(sky, 0, 0);
-      for (const s of stars) {
-        const brightness = .5 + .5 * Math.sin(time * s.speed + s.phase);
-        c.globalAlpha = .33 + brightness * .67;
-        star(c, s.x, s.y, s.size && brightness > .55 ? s.size : 0, brightness > .73 ? '#fff0cf' : '#c1a7c3');
+    for(const [y,x,length]of waterPlanes)rect(wc,x*w,horizon+y,length*w,y<14?2:1,y<8?P.water2:P.water1);
+    for(const [x,len]of [[.02,12],[.13,18],[.21,9],[.34,15],[.48,10],[.58,7],[.68,17],[.82,11],[.94,8]])rect(wc,w*x,horizon+2,len,1,P.sky6);
+    const ripples=[
+      [.06,.07,8],[.18,.10,10],[.27,.05,5],[.37,.09,14],[.51,.06,7],[.61,.12,9],[.90,.07,13],
+      [.10,.19,12],[.29,.22,17],[.44,.18,9],[.57,.26,13],[.86,.22,12],[.96,.17,7],
+      [.04,.36,19],[.20,.32,10],[.35,.41,16],[.49,.35,14],[.64,.40,9],[.91,.38,18],
+      [.14,.53,15],[.26,.62,22],[.42,.56,13],[.58,.60,21],[.79,.55,11],
+      [.36,.74,24],[.51,.78,12],[.64,.73,17]
+    ].map(([x,y,len],i)=>({x:Math.round(x*w),y:horizon+Math.round(y*(h-horizon)),len,phase:i%6}));
+    const clouds=cloudSprites(makeCanvas);
+    const cloudPositions=[
+      {image:clouds.wide,x:Math.round(w*(portrait?.15:.43)-82),y:Math.round(h*(portrait?.095:.205)),direction:1},
+      {image:clouds.thin,x:Math.round(w*.84-58),y:Math.round(h*.31),direction:-1}
+    ];
+    const anchors=globalThis.PixelGarden.draw(gc,w,h,1337)||{};
+    const font=globalThis.PixelTypography,ts=w>=760?3:w>=font.width*2+16?2:1;
+    const text={x:Math.floor((w-font.width*ts)/2),y:Math.floor((h-font.height*ts)/2),width:font.width*ts,height:font.height*ts,scale:ts};
+    for(const [dx,dy]of [[-1,0],[1,0],[0,-1],[0,1],[1,2]])sprite(tc,font.rows,text.x+dx,text.y+dy,{'1':P.sky2},ts);
+    sprite(tc,font.rows,text.x,text.y,{'1':P.cream},ts);
+    const petals=Array.from({length:portrait?10:17},(_,i)=>({x:rng()*w,y:rng()*h,phase:i*1.71,speed:1.5+rng()*2}));
+    const fireflies=Array.from({length:portrait?8:12},(_,i)=>({x:Math.round(rng()*w),y:Math.round(h*(.77+rng()*.16)),phase:i*1.91}));
+    function draw(c,time=0,options={}) {
+      c.imageSmoothingEnabled=false;c.drawImage(sky,0,0);
+      for(const s of stars) {
+        const phase=(Math.floor(time*.6)+s.phase)%8;
+        const color=[P.sky4,P.sky5,P.lavender,P.petal,P.light,P.lavender,P.sky5,P.sky4][phase];
+        cross(c,s.x,s.y,s.size&&phase>=2&&phase<=5?1:0,color);
       }
-      c.globalAlpha = 1;
-      // One soft, occasional comet; it never streaks through the lettering.
-      const cometTime = (time + 7) % 32;
-      if (cometTime < 1.6) {
-        const progress = cometTime / 1.6;
-        const x = w * (.43 + progress * .20), y = h * (.07 + progress * .105);
-        const fade = Math.sin(progress * PI);
-        for (let j = 16; j >= 0; j--) {
-          c.globalAlpha = fade * (1 - j / 17) * .7;
-          rect(c, x - j * 1.8, y - j * .58, j === 0 ? 2 : 1, 1, '#fff1d5');
-        }
+      const comet=(time+9)%37;
+      if(comet<1.7) {
+        const x=Math.round(w*(.38+.22*comet/1.7)),y=Math.round(h*(.075+.09*comet/1.7));
+        const colors=[P.cream,P.light,P.lavender,P.sky5,P.sky4];
+        for(let i=4;i>=0;i--)line(c,x-i*4,y-i*2,x-i*4-3,y-i*2-1,colors[i]);
       }
-      for (const cl of clouds) {
-        c.globalAlpha = cl.alpha;
-        const travel = Math.sin(time / 75) * 15 * cl.speed;
-        c.drawImage(cl.cv, Math.round(cl.x - cl.cv.width / 2 + travel), Math.round(cl.y));
+      for(const cl of cloudPositions)c.drawImage(cl.image,cl.x+Math.round(Math.sin(time/30)*5)*cl.direction,cl.y);
+      c.drawImage(water,0,0);c.drawImage(land,0,0);
+      for(const r of ripples) {
+        const frame=(Math.floor(time*.75)+r.phase)%6,shift=[0,1,1,0,-1,-1][frame];
+        const color=r.y<horizon+17?P.water3:r.y<horizon+40?P.water2:P.water1;
+        rect(c,r.x+shift,r.y,r.len,1,color);
+        if(frame===1||frame===2)rect(c,r.x+r.len-3,r.y+2,5,1,color);
       }
-      c.globalAlpha = 1;
-      c.drawImage(water, 0, 0);
-      c.drawImage(land, 0, 0);
-      for (const p of ripples) {
-        const intensity = Math.sin(time * p.speed + p.phase);
-        if (intensity < -.45) continue;
-        c.globalAlpha = .28 + (intensity + 1) * .22;
-        rect(c, p.x + Math.sin(time * .26 + p.phase) * 3, p.y, p.width, 1, p.color);
+      const reflection=[[3,-6,7],[5,-3,11],[8,-8,14],[12,-5,10],[17,-9,17],[23,-4,12],[30,-11,19],[38,-5,14],[47,-12,22],[58,-5,16],[70,-10,21]];
+      for(let i=0;i<reflection.length;i++) {
+        const [dy,dx,len]=reflection[i];if(horizon+dy>h*.89)continue;
+        const phase=(Math.floor(time*.8)+i)%4;
+        const tone=i<4?(phase===0||phase===1?P.lavender:P.sky6):i<7?(phase===1?P.lavender:P.water3):(phase===1?P.water3:P.water2);
+        rect(c,moon.x+dx+(phase===1?1:0),horizon+dy,len,1,tone);
+        if(i>3&&phase===2)rect(c,moon.x+dx+len+3,horizon+dy+1,3,1,P.water2);
       }
-      // A narrow, broken path of moonlight across the lake.
-      for (let i = 0; i < 27; i++) {
-        const y = horizon + 3 + i * 2;
-        if (y > h * .865) break;
-        const shift = Math.sin(i * 1.91 + time * .75);
-        const width = 1 + (i / 27) * 19 * (.45 + .55 * Math.sin(i * 3.74) ** 2);
-        c.globalAlpha = .13 + .13 * Math.sin(i + time * .6) ** 2;
-        rect(c, moon.x - width / 2 + shift * (2 + i * .1), y, width, 1, '#ffdbc3');
+      c.drawImage(garden,0,0);
+      for(const p of petals) {
+        const x=Math.floor((p.x+time*p.speed+Math.sin(time*.7+p.phase)*3)%(w+12))-6;
+        const y=Math.floor((p.y+time*(1.5+p.speed*.3))%(h+12))-6;
+        if(x>text.x-8&&x<text.x+text.width+8&&y>text.y-9&&y<text.y+text.height+9)continue;
+        const phase=Math.floor(time+p.phase)%3;
+        rect(c,x,y,phase===1?1:2,1,y<h*.65?P.sky7:P.pink);
+        if(phase===2)rect(c,x+1,y-1,1,1,P.blush);
       }
-      c.globalAlpha = 1;
-      c.drawImage(garden, 0, 0);
-      for (const p of petals) {
-        const x = ((p.x + time * p.vx + Math.sin(time * .8 + p.phase) * 4) % (w + 12)) - 6;
-        const y = ((p.y + time * p.vy) % (h + 12)) - 6;
-        // Keep the title's immediate surroundings quiet.
-        if (x > w * .26 && x < w * .74 && y > h * .43 && y < h * .57) continue;
-        c.globalAlpha = y < h * .6 ? .52 : .75;
-        rect(c, x, y, p.size, 1, '#eab3c6');
-        if (p.size > 1 && Math.sin(time * 2 + p.phase) > 0) rect(c, x + 1, y - 1, 1, 1, '#bc809f');
+      for(const f of fireflies) {
+        const phase=(Math.floor(time*.7+f.phase)%8+8)%8;if(phase>4)continue;
+        const x=f.x+Math.round(Math.sin(time*.35+f.phase)*3),y=f.y+Math.round(Math.cos(time*.3+f.phase)*2);
+        if(phase===2)cross(c,x,y,1,P.teal2);
+        rect(c,x,y,1,1,phase===2?P.gold:phase===1||phase===3?P.teal3:P.teal2);
       }
-      for (const f of fireflies) {
-        const glow = Math.max(0, Math.sin(time * f.speed + f.phase));
-        if (glow < .28) continue;
-        const x = Math.round(f.x + Math.sin(time * .4 + f.phase) * 4);
-        const y = Math.round(f.y + Math.cos(time * .3 + f.phase) * 3);
-        c.globalAlpha = glow * .09;
-        rect(c, x - 1, y - 1, 3, 3, '#ffe0a0');
-        c.globalAlpha = glow * .88;
-        rect(c, x, y, 1, 1, '#f8e6ac');
-      }
-      c.globalAlpha = 1;
+      if(options.title!==false)c.drawImage(title,0,0);
     }
-    return { draw, width: w, height: h, horizon, anchors };
+    return {draw,width:w,height:h,horizon,text,clouds,anchors};
   }
-
-  globalThis.PixelScene = { create };
+  globalThis.PixelScene=Object.freeze({create,cloudSprites});
 })();

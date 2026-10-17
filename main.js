@@ -1,68 +1,62 @@
 (() => {
   'use strict';
-  const canvas = document.getElementById('scenery');
-  const heading = document.querySelector('.welcome');
-  const context = canvas.getContext('2d', { alpha: false });
-  if (!context || !globalThis.PixelScene) return;
-
-  const motion = window.matchMedia('(prefers-reduced-motion: reduce)');
-  let scene, frame = 0, lastTime = 0, elapsed = 0, previousFrame = 0;
-  let width = 0, height = 0;
-  const makeCanvas = (w, h) => {
-    const result = document.createElement('canvas');
-    result.width = w; result.height = h;
-    return result;
-  };
-
-  function draw() { if (scene) scene.draw(context, elapsed); }
-
-  function animate(now) {
-    frame = 0;
-    if (document.hidden || motion.matches) return;
-    // A small, capped frame rate is intentional: the artwork moves in pixel steps.
-    if (now - previousFrame >= 1000 / 12) {
-      if (lastTime) elapsed += Math.min((now - lastTime) / 1000, .2);
-      lastTime = now;
-      previousFrame = now;
-      draw();
+  const canvas=document.getElementById('scenery');
+  const container=canvas.parentElement;
+  const context=canvas.getContext('2d',{alpha:false});
+  if(!context||!globalThis.PixelScene||!globalThis.PixelTypography)return;
+  const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
+  let scene,logical,grid,animation=0,resizeFrame=0,elapsed=0,lastTick=0,previousFrame=0;
+  const makeCanvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
+  function paint() {
+    if(!scene)return;
+    scene.draw(logical.getContext('2d'),elapsed);
+    context.imageSmoothingEnabled=false;
+    // A source pixel always becomes an exact square of whole physical display pixels.
+    context.drawImage(logical,0,0,grid.canvasWidth,grid.canvasHeight);
+  }
+  function tick(now) {
+    animation=0;
+    if(document.hidden||motion.matches)return;
+    if(now-previousFrame>=1000/12) {
+      if(lastTick)elapsed+=Math.min((now-lastTick)/1000,.2);
+      previousFrame=now;lastTick=now;paint();
     }
-    frame = requestAnimationFrame(animate);
+    animation=requestAnimationFrame(tick);
   }
-
   function updateMotion() {
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0; lastTime = 0; previousFrame = 0;
-    if (motion.matches) elapsed = 0;
-    draw();
-    if (!motion.matches && !document.hidden) frame = requestAnimationFrame(animate);
+    if(animation)cancelAnimationFrame(animation);
+    animation=0;lastTick=0;previousFrame=0;
+    if(motion.matches)elapsed=0;
+    paint();
+    if(!motion.matches&&!document.hidden)animation=requestAnimationFrame(tick);
   }
-
+  let densityQuery;
+  function watchDensity() {
+    if(densityQuery)densityQuery.removeEventListener('change',densityChanged);
+    densityQuery=window.matchMedia(`(resolution: ${window.devicePixelRatio||1}dppx)`);
+    densityQuery.addEventListener('change',densityChanged);
+  }
+  function densityChanged(){watchDensity();queueResize();}
   function resize() {
-    const bounds = canvas.parentElement.getBoundingClientRect();
-    const nextWidth = Math.round(bounds.width), nextHeight = Math.round(bounds.height);
-    if (!nextWidth || !nextHeight || (nextWidth === width && nextHeight === height)) return;
-    width = nextWidth; height = nextHeight;
-    const scale = Math.max(2, Math.round(Math.min(width / 480, height / 300)));
-    const w = Math.ceil(width / scale), h = Math.ceil(height / scale);
-    canvas.width = w; canvas.height = h;
-    canvas.style.width = `${w * scale}px`;
-    canvas.style.height = `${h * scale}px`;
-    canvas.style.left = `${Math.floor((width - w * scale) / 2)}px`;
-    canvas.style.top = `${Math.floor((height - h * scale) / 2)}px`;
-    const letterPixel = Math.max(2, Math.min(11, Math.floor(3 + width / 360), Math.floor(width * .8 / 57)));
-    document.documentElement.style.setProperty('--letter-pixel', `${letterPixel}px`);
-    // Integer placement keeps the lettering as crisp as the landscape underneath it.
-    heading.style.left = `${Math.floor((width - 57 * letterPixel) / 2)}px`;
-    heading.style.top = `${Math.floor((height - 15 * letterPixel) / 2)}px`;
-    heading.style.transform = 'none';
-    scene = globalThis.PixelScene.create(w, h, makeCanvas);
-    draw();
+    resizeFrame=0;
+    const bounds=container.getBoundingClientRect();
+    if(bounds.width<=0||bounds.height<=0)return;
+    const next=globalThis.PixelArt.layout(bounds.width,bounds.height,window.devicePixelRatio||1);
+    if(grid&&next.physicalWidth===grid.physicalWidth&&next.physicalHeight===grid.physicalHeight&&next.dpr===grid.dpr)return;
+    grid=next;
+    canvas.width=grid.canvasWidth;canvas.height=grid.canvasHeight;
+    canvas.style.width=`${grid.canvasWidth/grid.dpr}px`;
+    canvas.style.height=`${grid.canvasHeight/grid.dpr}px`;
+    canvas.style.left=`${grid.left/grid.dpr}px`;canvas.style.top=`${grid.top/grid.dpr}px`;
+    logical=makeCanvas(grid.w,grid.h);
+    scene=globalThis.PixelScene.create(grid.w,grid.h,makeCanvas);
+    paint();
+    container.classList.add('is-ready');
   }
-
-  window.addEventListener('resize', resize, { passive: true });
-  if ('ResizeObserver' in window) new ResizeObserver(resize).observe(canvas.parentElement);
-  document.addEventListener('visibilitychange', updateMotion);
-  motion.addEventListener('change', updateMotion);
-  resize();
-  updateMotion();
+  function queueResize(){if(!resizeFrame)resizeFrame=requestAnimationFrame(resize);}
+  window.addEventListener('resize',queueResize,{passive:true});
+  if('ResizeObserver'in window)new ResizeObserver(queueResize).observe(container);
+  document.addEventListener('visibilitychange',updateMotion);
+  motion.addEventListener('change',updateMotion);
+  watchDensity();resize();updateMotion();
 })();

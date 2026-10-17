@@ -3,25 +3,28 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#292342">
+    <meta name="theme-color" content="#242340">
     <meta name="description" content="A quiet little corner beneath a pixel sky.">
     <meta property="og:title" content="Welcome">
     <meta property="og:description" content="A quiet little corner beneath a pixel sky.">
-    <meta property="og:image" content="https://chinchillacomet.github.io/assets/preview.png">
+    <meta property="og:image" content="https://chinchillacomet.github.io/assets/preview.png?v=2">
     <title>Welcome</title>
-    <link rel="icon" type="image/svg+xml" href="./assets/moon.svg">
-    <link rel="stylesheet" href="./style.css">
-    <script src="./garden.js" defer></script>
-    <script src="./scene.js" defer></script>
-    <script src="./main.js" defer></script>
+    <link rel="icon" type="image/svg+xml" href="./assets/moon.svg?v=2">
+    <link rel="stylesheet" href="./style.css?v=2">
+    <script src="./pixel.js?v=2" defer></script>
+    <script src="./typography.js?v=2" defer></script>
+    <script src="./garden.js?v=2" defer></script>
+    <script src="./scene.js?v=2" defer></script>
+    <script src="./main.js?v=2" defer></script>
   </head>
   <body>
     <main class="landscape">
+      <picture class="still" aria-hidden="true">
+        <source media="(orientation: portrait)" srcset="./assets/still-mobile.png?v=2">
+        <img src="./assets/still.png?v=2" alt="" width="480" height="300">
+      </picture>
       <canvas id="scenery" aria-hidden="true"></canvas>
-      <h1 class="welcome">
-        <span class="screen-reader-text">Welcome</span>
-        <img src="./assets/welcome.svg" width="57" height="15" alt="" aria-hidden="true" draggable="false">
-      </h1>
+      <h1 class="welcome">Welcome</h1>
     </main>
   </body>
 </html>
