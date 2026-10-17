@@ -1,23 +1,31 @@
 'use strict';
-const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm');
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
 const {createCanvas}=require('@napi-rs/canvas');
-const root=path.resolve(__dirname,'..');
-for(const name of ['pixel','typography','ambient','art','scene']){
-  vm.runInThisContext(fs.readFileSync(path.join(root,name+'.js'),'utf8'),{filename:name+'.js'});
-}
-// These tiny lossless stills are fallbacks. The running page draws native art
-// directly and makes no image request as a prerequisite to its first frame.
-for(const asset of Object.values(PixelScene.assets)){
-  const scene=PixelScene.create(asset.width,asset.height,createCanvas);
-  const frame=createCanvas(asset.width,asset.height);
-  scene.draw(frame.getContext('2d'),0,{motion:false,title:false});
-  fs.writeFileSync(path.join(root,asset.src.split('?')[0]),frame.toBuffer('image/png'));
-}
-for(const [name,width,height,scale]of [['preview.png',360,225,2],['preview-mobile.png',195,422,2]]){
-  const scene=PixelScene.create(width,height,createCanvas),frame=createCanvas(width,height);
-  scene.draw(frame.getContext('2d'),0,{motion:false});
-  const output=createCanvas(width*scale,height*scale),ctx=output.getContext('2d');
-  ctx.imageSmoothingEnabled=false;ctx.drawImage(frame,0,0,output.width,output.height);
-  fs.writeFileSync(path.join(root,'assets',name),output.toBuffer('image/png'));
-}
-console.log('Rendered lossless native-grid fallbacks and desktop/phone previews.');
+
+module.exports=function renderAssets(root){
+  const scope=vm.createContext({});
+  for(const name of ['pixel','typography','ambient','art','scene']){
+    vm.runInContext(fs.readFileSync(path.join(root,'src',name+'.js'),'utf8'),scope,{filename:name+'.js'});
+  }
+  const destination=path.join(root,'assets/releases');fs.mkdirSync(destination,{recursive:true});
+  function save(name,canvas){
+    const bytes=canvas.toBuffer('image/png'),hash=crypto.createHash('sha256').update(bytes).digest('hex');
+    const filename=name+'.'+hash.slice(0,12)+'.png';fs.writeFileSync(path.join(destination,filename),bytes);
+    return {path:'assets/releases/'+filename,sha256:hash,width:canvas.width,height:canvas.height,bytes:bytes.length};
+  }
+  const stills={},previews={};
+  for(const asset of Object.values(scope.PixelScene.assets)){
+    const scene=scope.PixelScene.create(asset.width,asset.height,createCanvas);
+    const frame=createCanvas(asset.width,asset.height);
+    scene.draw(frame.getContext('2d'),0,{motion:false,title:false});
+    stills[asset.id]=save('still-'+asset.id,frame);
+  }
+  for(const [id,width,height]of [['desktop',360,225],['phone',195,422]]){
+    const scene=scope.PixelScene.create(width,height,createCanvas),frame=createCanvas(width,height);
+    scene.draw(frame.getContext('2d'),0,{motion:false});
+    const output=createCanvas(width*2,height*2),ctx=output.getContext('2d');
+    ctx.imageSmoothingEnabled=false;ctx.drawImage(frame,0,0,output.width,output.height);
+    previews[id]=save('preview-'+id,output);
+  }
+  return {stills,previews};
+};

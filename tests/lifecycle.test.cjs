@@ -31,7 +31,9 @@ test('initialization, drawing, and display-copy failures preserve fallback and a
   for (const [fault, option] of [['scene', 'failScene'], ['draw', 'failDraw'], ['copy', 'failCopy']]) {
     const page = makePage({ [option]: true });
     assert.equal(page.ready(), false);
-    assert.equal(page.raf.size, 0);
+    assert.equal(page.raf.size, 1, 'A failed render gets one bounded next-frame retry');
+    page.frame(50);
+    assert.equal(page.raf.size, 0, 'Persistent failures must not keep retrying every frame');
     assert.equal(page.copies.length, 0);
     page.setFault(fault, false);
     page.resize(1440, 900);
@@ -48,6 +50,8 @@ test('a runtime drawing failure restores fallback and stops the failed animation
   page.setFault('draw', true);
   page.frame(200);
   assert.equal(page.ready(), false);
+  assert.equal(page.raf.size, 1);
+  page.frame(250);
   assert.equal(page.raf.size, 0);
   const count = page.draws.length;
   page.frame(300);
@@ -191,4 +195,131 @@ test('animation renders at most 24 frames per second while advancing elapsed tim
   assert.equal(page.draws.length, count + 1);
   assert.ok(Math.abs(page.draws.at(-1).time - .042) < 1e-9);
   assert.equal(page.raf.size, 1);
+});
+
+test('a script evaluated before the canvas exists starts on DOMContentLoaded', () => {
+  const page = makePage({ readyState: 'loading', canvasAvailable: false });
+  assert.equal(page.ready(), false);
+  assert.equal(page.raf.size, 0);
+  page.domReady();
+  assert.ok(page.ready());
+  assert.equal(page.creations.length, 1);
+  assert.equal(page.raf.size, 1);
+  page.load(); page.pageshow(false);
+  assert.equal(page.creations.length, 1);
+  assert.equal(page.raf.size, 1, 'Readiness notifications must not duplicate the running app');
+});
+
+test('a missing startup dependency can recover at load once it is available', () => {
+  const page = makePage({ sceneAvailable: false });
+  assert.equal(page.ready(), false);
+  page.setSceneAvailable(true);
+  page.load();
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 1);
+});
+
+test('a transient first-render failure can recover on pageshow without a window resize', () => {
+  const page = makePage({ failDraw: true });
+  page.setFault('draw', false);
+  page.pageshow(false);
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 1);
+});
+
+test('a hidden zero-size startup builds the scene when the tab becomes visible', () => {
+  const page = makePage({ width: 0, height: 0, hidden: true, resizeObserver: false });
+  assert.equal(page.ready(), false);
+  page.container.bounds = { width: 390, height: 844 };
+  page.visibility(false);
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 1);
+});
+
+test('load retries a zero-size initial layout without requiring ResizeObserver', () => {
+  const page = makePage({ width: 0, height: 0, resizeObserver: false });
+  page.container.bounds = { width: 1440, height: 900 };
+  page.load();
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 1);
+});
+
+test('pageshow reconciles pending-frame bookkeeping after a back-forward-cache restoration', () => {
+  const page = makePage();
+  page.frame(100); page.frame(200);
+  const before = page.draws.at(-1).time;
+  page.resize(390, 844);
+  page.pagehide();
+  // Simulate a restored scheduling queue. This is a robustness model, not an
+  // assertion that every browser discards queued animation callbacks in BFCache.
+  page.discardPendingFrames();
+  page.window.devicePixelRatio = 2;
+  page.pageshow();
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 1);
+  assert.equal(page.creations.at(-1).w, page.art.layout(390, 844, 2).w);
+  assert.equal(page.canvas.width, page.art.layout(390, 844, 2).canvasWidth);
+  page.frame(100000);
+  assert.equal(page.draws.at(-1).time, before);
+  page.frame(100100);
+  assert.ok(Math.abs(page.draws.at(-1).time - before - .1) < 1e-9);
+});
+
+test('freeze cancels pending work and resume restarts from the preserved scene time', () => {
+  const page = makePage();
+  page.frame(100); page.frame(200);
+  const before = page.draws.at(-1).time;
+  page.resize(390, 844);
+  page.freeze();
+  assert.equal(page.raf.size, 0);
+  page.resume();
+  assert.equal(page.raf.size, 1);
+  page.frame(100000);
+  assert.equal(page.draws.at(-1).time, before);
+});
+
+test('one automatic retry recovers a transient render error without enabling reduced motion', () => {
+  for (const reducedMotion of [false, true]) {
+    const page = makePage({ failDraw: true, reducedMotion });
+    assert.equal(page.ready(), false);
+    assert.equal(page.raf.size, 1);
+    page.setFault('draw', false);
+    page.frame(100);
+    assert.ok(page.ready());
+    assert.equal(page.raf.size, reducedMotion ? 0 : 1);
+    assert.equal(page.draws.at(-1).motion, !reducedMotion);
+    assert.equal(page.draws.at(-1).time, 0);
+  }
+});
+
+test('restore and resume events keep background tabs and reduced-motion pages still', () => {
+  for (const options of [{ hidden: true }, { reducedMotion: true }]) {
+    const page = makePage(options);
+    page.load(); page.pageshow(false);
+    assert.equal(page.raf.size, 0);
+    page.pagehide(); page.freeze();
+    page.resume(); page.pageshow();
+    assert.equal(page.raf.size, 0);
+    const count = page.draws.length;
+    page.frame(10000);
+    assert.equal(page.draws.length, count);
+    if (options.hidden) {
+      page.visibility(false);
+      assert.equal(page.raf.size, 1);
+    } else {
+      assert.ok(page.draws.every(draw => draw.time === 0 && draw.motion === false));
+    }
+  }
+});
+
+test('a prerendered page starts its loop only after activation', () => {
+  const page = makePage({ prerendering: true });
+  assert.ok(page.ready());
+  assert.equal(page.raf.size, 0);
+  page.pageshow(false);
+  assert.equal(page.raf.size, 0);
+  page.activatePrerender();
+  assert.equal(page.raf.size, 1);
+  page.frame(100); page.frame(200);
+  assert.ok(page.draws.at(-1).time > 0);
 });

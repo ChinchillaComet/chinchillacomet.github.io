@@ -1,0 +1,52 @@
+{
+  "version": 5,
+  "runtime": {
+    "path": "assets/releases/welcome.b7befe3a8cb4.js",
+    "sha256": "b7befe3a8cb40dadf9a1e1e080540a3013795e73aaf75fa5f45b8ce9cf299e73",
+    "bytes": 53784
+  },
+  "stylesheet": {
+    "path": "assets/releases/welcome.732b7d13bac7.css",
+    "sha256": "732b7d13bac7d3f79089ab4e2d4c2604ab9dfad53b4f37b292e4585f2f196dfb",
+    "bytes": 1566
+  },
+  "stills": {
+    "landscape": {
+      "path": "assets/releases/still-landscape.271a850c1ff3.png",
+      "sha256": "271a850c1ff3146b478b2f3cd7628c186165412bd41c6b689370a8dad2650847",
+      "width": 360,
+      "height": 225,
+      "bytes": 9200
+    },
+    "portrait": {
+      "path": "assets/releases/still-portrait.999cd84d3afe.png",
+      "sha256": "999cd84d3afef3de3d19d8132dc1d3302742d64b617571412b311ae284723a0f",
+      "width": 195,
+      "height": 422,
+      "bytes": 8835
+    },
+    "panorama": {
+      "path": "assets/releases/still-panorama.c849894b6117.png",
+      "sha256": "c849894b6117d91f2f6857cc0f6e96b28c8a7f6d7d3e8a10bf8239b24cfc40b7",
+      "width": 480,
+      "height": 204,
+      "bytes": 9667
+    }
+  },
+  "previews": {
+    "desktop": {
+      "path": "assets/releases/preview-desktop.b26636391d16.png",
+      "sha256": "b26636391d16bc799d06604bee103f7c44db00e156404c3cd2935cce0e68709a",
+      "width": 720,
+      "height": 450,
+      "bytes": 12269
+    },
+    "phone": {
+      "path": "assets/releases/preview-phone.8370d08862af.png",
+      "sha256": "8370d08862afa5b1d6952e1787af27ec9342b08eb63eb21551d36c46fb18a2ed",
+      "width": 390,
+      "height": 844,
+      "bytes": 12272
+    }
+  }
+}

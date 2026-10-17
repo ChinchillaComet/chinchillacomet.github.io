@@ -6,17 +6,29 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const source = name => fs.readFileSync(path.join(ROOT, name), 'utf8');
+const runtimeFiles = new Set(['pixel.js', 'typography.js', 'ambient.js', 'art.js', 'scene.js', 'main.js']);
+// Root runtime files are retained for cached v4 HTML. Exercise the editable
+// implementation that the current release bundles, while HTML stays at root.
+const source = name => fs.readFileSync(path.join(ROOT, runtimeFiles.has(name) ? 'src' : '', name), 'utf8');
 
 class Events {
-  constructor() { this.listeners = new Map(); }
-  addEventListener(name, callback) {
+  constructor() { this.listeners = new Map(); this.once = new Map(); }
+  addEventListener(name, callback, options = {}) {
     if (!this.listeners.has(name)) this.listeners.set(name, new Set());
     this.listeners.get(name).add(callback);
+    if (options.once) {
+      if (!this.once.has(name)) this.once.set(name, new Set());
+      this.once.get(name).add(callback);
+    }
   }
-  removeEventListener(name, callback) { this.listeners.get(name)?.delete(callback); }
-  dispatch(name) {
-    for (const callback of [...(this.listeners.get(name) || [])]) callback({ type: name, matches: this.matches });
+  removeEventListener(name, callback) {
+    this.listeners.get(name)?.delete(callback); this.once.get(name)?.delete(callback);
+  }
+  dispatch(name, detail = {}) {
+    for (const callback of [...(this.listeners.get(name) || [])]) {
+      if (this.once.get(name)?.has(callback)) this.removeEventListener(name, callback);
+      callback({ type: name, matches: this.matches, ...detail });
+    }
   }
 }
 
@@ -24,7 +36,8 @@ class Events {
 // scene initialization, frame scheduling, fallback state, and physical sizing.
 function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
   hidden = false, failScene = false, failDraw = false, failCopy = false,
-  contextAvailable = true, sceneAvailable = true } = {}) {
+  contextAvailable = true, sceneAvailable = true, readyState = 'complete',
+  canvasAvailable = true, prerendering = false, resizeObserver = true } = {}) {
   const artContext = vm.createContext({});
   vm.runInContext(source('pixel.js'), artContext, { filename: 'pixel.js' });
   vm.runInContext(source('typography.js'), artContext, { filename: 'typography.js' });
@@ -65,11 +78,14 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     },
   };
   const canvas = makeCanvas(1, 1);
-  if (!contextAvailable) canvas.getContext = () => null;
+  const canvasContext = canvas.getContext;
+  canvas.getContext = (...args) => contextAvailable ? canvasContext(...args) : null;
   canvas.parentElement = container;
   const document = new Events();
   document.hidden = hidden;
-  document.getElementById = id => { assert.equal(id, 'scenery'); return canvas; };
+  document.readyState = readyState;
+  document.prerendering = prerendering;
+  document.getElementById = id => { assert.equal(id, 'scenery'); return canvasAvailable ? canvas : null; };
   document.createElement = tag => { assert.equal(tag, 'canvas'); return makeCanvas(); };
   const window = new Events();
   window.devicePixelRatio = dpr;
@@ -86,7 +102,7 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     constructor(callback) { this.callback = callback; observers.push(this); }
     observe(element) { assert.equal(element, container); }
   }
-  window.ResizeObserver = ResizeObserver;
+  if (resizeObserver) window.ResizeObserver = ResizeObserver;
   const sceneApi = {
     create(w, h, make) {
       assert.equal(arguments.length, 3, 'Scene construction must not require external image assets');
@@ -115,6 +131,25 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     canvas, container, document, window, draws, creations, copies, queries, raf, art,
     ready() { return container.classList.values.has('is-ready'); },
     setFault(name, active) { faults[name] = active; },
+    setSceneAvailable(available) { context.PixelScene = available ? sceneApi : undefined; },
+    setContextAvailable(available) { contextAvailable = available; },
+    domReady() {
+      document.readyState = 'interactive'; canvasAvailable = true;
+      document.dispatch('DOMContentLoaded');
+    },
+    load() {
+      document.readyState = 'complete'; canvasAvailable = true;
+      window.dispatch('load');
+    },
+    pagehide(persisted = true) { window.dispatch('pagehide', { persisted }); },
+    pageshow(persisted = true) { window.dispatch('pageshow', { persisted }); },
+    freeze() { document.dispatch('freeze'); },
+    resume() { document.dispatch('resume'); },
+    activatePrerender() {
+      document.prerendering = false;
+      document.dispatch('prerenderingchange');
+    },
+    discardPendingFrames() { raf.clear(); },
     frame(now) {
       for (const id of [...raf.keys()]) {
         if (!raf.has(id)) continue;

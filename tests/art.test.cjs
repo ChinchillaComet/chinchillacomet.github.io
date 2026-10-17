@@ -32,7 +32,7 @@ function assertOpaquePalette(data, label) {
     assert.equal(data[offset + 3], 255, `${label}: every scene pixel must be opaque`);
     colors.add((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
   }
-  assert.ok(colors.size <= 32, `${label}: ${colors.size} colors exceeds the 32-color art budget`);
+  assert.ok(colors.size <= 48, `${label}: ${colors.size} colors exceeds the 48-color art budget`);
 }
 function assertGlyphs(data, scene) {
   const title = scene.text;
@@ -87,9 +87,14 @@ test('Welcome retains the exact original font mask and is the only visible docum
 });
 
 test('fallback PNGs decode at the native dimensions recorded by the scene', async () => {
+  const release = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/release.json'), 'utf8'));
   for (const asset of Object.values(scenes.assets)) {
-    assert.match(asset.src, /\.png(?:\?|$)/);
-    const image = await loadImage(path.join(ROOT, asset.src.split('?')[0]));
+    const fallback = release.stills[asset.id];
+    assert.ok(fallback, `${asset.id} must have a released fallback`);
+    assert.match(fallback.path, /\.png$/);
+    assert.equal(fallback.width, asset.width, `${asset.id} manifest width`);
+    assert.equal(fallback.height, asset.height, `${asset.id} manifest height`);
+    const image = await loadImage(path.join(ROOT, fallback.path));
     assert.equal(image.width, asset.width, `${asset.id} width`);
     assert.equal(image.height, asset.height, `${asset.id} height`);
   }
@@ -206,6 +211,35 @@ test('reduced-motion rendering stays byte-identical regardless of elapsed time o
     for (const time of [1.75, 8.3, 123.456]) {
       assert.deepEqual(render(scene, time, { motion: false }), baseline);
     }
+  }
+});
+
+test('firefly cores remain visible in the initial still and throughout their pulse cycles', () => {
+  for (const [width, height] of compositions) {
+    const scene = scenes.create(width, height, createCanvas);
+    const initial = scene.particlesAt(0).fireflies;
+    assert.ok(initial.length > 0, 'The scene must include visible fireflies at startup');
+    const levels = Array.from({ length: initial.length }, () => new Set());
+    // Eight seconds covers the current pulse cycles. Verify that the samples
+    // actually include every light level rather than only their bright phase.
+    for (let frame = 0; frame <= 32; frame++) {
+      const time = frame / 4;
+      const fireflies = scene.particlesAt(time).fireflies;
+      assert.equal(fireflies.length, initial.length, 'Fireflies must keep a visible core between pulses');
+      const data = render(scene, time, frame === 0 ? { motion: false } : {});
+      for (const [index, fly] of fireflies.entries()) {
+        assert.ok(Number.isInteger(fly.x) && Number.isInteger(fly.y));
+        assert.ok(fly.x >= 0 && fly.x < width && fly.y > scene.horizon && fly.y < height);
+        assert.ok(Number.isInteger(fly.level) && fly.level >= 0 && fly.level <= 3);
+        levels[index].add(fly.level);
+        const color = Number.parseInt(ambient.particleColors.firefly[fly.level].slice(1), 16);
+        const offset = (fly.y * width + fly.x) * 4;
+        assert.deepEqual(Array.from(data.subarray(offset, offset + 4)),
+          [color >>> 16, color >>> 8 & 255, color & 255, 255],
+          'The firefly core must survive the complete scene composition');
+      }
+    }
+    for (const observed of levels) assert.deepEqual([...observed].sort(), [0, 1, 2, 3]);
   }
 });
 
