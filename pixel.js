@@ -1,8 +1,9 @@
-/* Shared display grid. Artwork and type are rasterized once, then enlarged by
- * a whole number of physical display pixels. There is no filtered CSS zoom. */
+/* Native drawing grid. Every scene pixel occupies an integer square of physical
+ * display pixels. Resizing changes the composition, never the sprite grid. */
 (() => {
   'use strict';
-  const P = Object.freeze({ sky0: '#242340', ink: '#302645', cream: '#fff1db' });
+  const P = Object.freeze({ sky0: '#655f91', ink: '#26243e', cream: '#fff1d8',
+    moonShade: '#ffddcd', star: '#bca1bb' });
   function rect(context, x, y, width, height, color) {
     context.fillStyle = color;
     context.fillRect(Math.round(x), Math.round(y), Math.round(width), Math.round(height));
@@ -19,11 +20,12 @@
     dpr = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
     const physicalWidth = Math.max(1, Math.round(width * dpr));
     const physicalHeight = Math.max(1, Math.round(height * dpr));
-    // A phone keeps a full CSS-pixel grid, instead of the former 195 columns.
-    const target = width <= height ? Math.max(1, Math.min(width / 440, height / 880))
-      : Math.max(1, Math.min(width / 800, height / 500));
+    // Start small. This is a native pixel scene, not an illustration reduced to
+    // screen size. Integer physical scaling also handles fractional display DPR.
+    const target = width <= height ? Math.max(1, Math.min(width / 185, height / 350))
+      : Math.max(1, Math.min(width / 360, height / 225));
     const desiredScale = target * dpr;
-    const scale = Math.max(1, width <= height ? Math.floor(desiredScale) : Math.round(desiredScale));
+    const scale = Math.max(1, Math.round(desiredScale));
     const w = Math.ceil(physicalWidth / scale), h = Math.ceil(physicalHeight / scale);
     const canvasWidth = w * scale, canvasHeight = h * scale;
     return {

@@ -1,6 +1,6 @@
 {
   "name": "chinchillacomet-welcome",
-  "version": "3.0.0",
+  "version": "4.0.0",
   "private": true,
   "description": "A buildless pixel art landing page for GitHub Pages.",
   "scripts": {

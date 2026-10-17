@@ -1,116 +1,240 @@
 'use strict';
+
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const vm = require('node:vm');
 const test = require('node:test');
-const {createCanvas, loadImage} = require('@napi-rs/canvas');
-const {ROOT, source} = require('./helpers.cjs');
+const { createCanvas, loadImage } = require('@napi-rs/canvas');
+const { ROOT, source } = require('./helpers.cjs');
+
 const scope = vm.createContext({});
-for (const name of ['pixel.js','typography.js','ambient.js','scene.js']) {
-  vm.runInContext(source(name),scope,{filename:name});
+for (const name of ['pixel.js', 'typography.js', 'ambient.js', 'art.js', 'scene.js']) {
+  vm.runInContext(source(name), scope, { filename: name });
 }
-const {PixelArt:art,PixelTypography:font,PixelScene:scenes,PixelAmbient:ambient}=scope;
-const imageCache = new Map();
-function imageFor(asset) {
-  if(!imageCache.has(asset.id))imageCache.set(asset.id,loadImage(path.join(ROOT,asset.src.split('?')[0])));
-  return imageCache.get(asset.id);
-}
-async function makeScene(width,height) {
-  const asset=scenes.variant(width,height);
-  return scenes.create(width,height,createCanvas,await imageFor(asset),asset);
-}
-function pixels(canvas) {return canvas.getContext('2d').getImageData(0,0,canvas.width,canvas.height).data;}
+const { PixelArt: art, PixelTypography: font, PixelScene: scenes,
+  PixelAmbient: ambient, NativeClouds: clouds, NativeLandscape: landscape } = scope;
+const cream = [255, 241, 216, 255];
+const compositions = [[360, 225], [195, 422], [480, 204]];
 
-test('Welcome retains the exact font glyphs and is the only visible document text',()=>{
-  const mask=JSON.parse(fs.readFileSync(path.join(ROOT,'assets/welcome-mask.json'),'utf8'));
-  assert.equal(font.text,'Welcome');
-  assert.equal(mask.glyphs.map(g=>g.character).join(''),font.text);
-  assert.deepEqual(Array.from(font.rows),mask.rows);
-  const binary=fs.readFileSync(path.join(ROOT,'assets/fonts/PressStart2P-Regular.ttf'));
-  assert.equal(crypto.createHash('sha256').update(binary).digest('hex'),mask.fontSha256);
-  const body=source('index.html').split('<body>')[1].split('</body>')[0];
-  assert.equal(body.replace(/<[^>]*>/g,'').trim(),'Welcome');
-  assert.match(body,/<h1 class="welcome">Welcome<\/h1>/);
-});
-
-test('all three complete artwork assets decode at the recorded dimensions',async()=>{
-  for(const asset of Object.values(scenes.assets)){
-    const image=await imageFor(asset);
-    assert.equal(image.width,asset.width,asset.id);
-    assert.equal(image.height,asset.height,asset.id);
+function pixels(canvas) {
+  return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
+}
+function render(scene, time = 0, options = {}) {
+  const canvas = createCanvas(scene.width, scene.height);
+  scene.draw(canvas.getContext('2d'), time, options);
+  return pixels(canvas);
+}
+function assertOpaquePalette(data, label) {
+  const colors = new Set();
+  for (let offset = 0; offset < data.length; offset += 4) {
+    assert.equal(data[offset + 3], 255, `${label}: every scene pixel must be opaque`);
+    colors.add((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
   }
-  assert.equal(scenes.variant(390,844).id,'portrait');
-  assert.equal(scenes.variant(1440,900).id,'landscape');
-  assert.equal(scenes.variant(2560,1080).id,'panorama');
+  assert.ok(colors.size <= 32, `${label}: ${colors.size} colors exceeds the 32-color art budget`);
+}
+function assertGlyphs(data, scene) {
+  const title = scene.text;
+  for (let row = 0; row < font.height; row++) {
+    for (let column = 0; column < font.width; column++) {
+      const filled = font.rows[row][column] === '1';
+      for (let y = 0; y < title.scale; y++) {
+        for (let x = 0; x < title.scale; x++) {
+          const offset = ((title.y + row * title.scale + y) * scene.width
+            + title.x + column * title.scale + x) * 4;
+          const cell = Array.from(data.subarray(offset, offset + 4));
+          if (filled) assert.deepEqual(cell, cream, 'Every original glyph cell must remain exact cream');
+          else assert.notDeepEqual(cell, cream, 'Letter counters and spacing must not acquire extra cream cells');
+        }
+      }
+    }
+  }
+}
+
+// Four-neighbor connectivity distinguishes an intact sprite from diagonally
+// touching fragments. The same flood fill can find enclosed transparent holes.
+function connectedFrom(mask, width, height, starts, value) {
+  const visited = new Uint8Array(mask.length);
+  const queue = [];
+  for (const start of starts) {
+    if (mask[start] === value && !visited[start]) { visited[start] = 1; queue.push(start); }
+  }
+  for (let next = 0; next < queue.length; next++) {
+    const index = queue[next], x = index % width, y = Math.floor(index / width);
+    for (const neighbor of [x > 0 ? index - 1 : -1, x + 1 < width ? index + 1 : -1,
+      y > 0 ? index - width : -1, y + 1 < height ? index + width : -1]) {
+      if (neighbor >= 0 && mask[neighbor] === value && !visited[neighbor]) {
+        visited[neighbor] = 1; queue.push(neighbor);
+      }
+    }
+  }
+  return visited;
+}
+
+test('Welcome retains the exact original font mask and is the only visible document text', () => {
+  const mask = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/welcome-mask.json'), 'utf8'));
+  assert.equal(font.text, 'Welcome');
+  assert.equal(font.width, mask.width);
+  assert.equal(font.height, mask.height);
+  assert.equal(mask.glyphs.map(glyph => glyph.character).join(''), font.text);
+  assert.deepEqual(Array.from(font.rows), mask.rows);
+  const binary = fs.readFileSync(path.join(ROOT, 'assets/fonts/PressStart2P-Regular.ttf'));
+  assert.equal(crypto.createHash('sha256').update(binary).digest('hex'), mask.fontSha256);
+  const body = source('index.html').split('<body>')[1].split('</body>')[0];
+  assert.equal(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, '').trim(), 'Welcome');
+  assert.match(body, /<h1 class="welcome">Welcome<\/h1>/);
 });
 
-test('responsive frames cover the display and preserve square pixels and centred glyphs',async t=>{
-  const cases=[[320,568,1],[320,568,1.5],[390,844,3],[768,1024,2],
-    [1440,900,1],[1440,900,1.25],[1440,900,2],[1920,1080,1],[2560,1080,1],[844,390,2]];
-  for(const [width,height,dpr]of cases)await t.test(`${width}x${height} at ${dpr} density`,async()=>{
-    const grid=art.layout(width,height,dpr);
-    for(const key of ['w','h','scale','canvasWidth','canvasHeight','left','top'])assert.ok(Number.isInteger(grid[key]),key);
-    assert.equal(grid.canvasWidth/grid.w,grid.scale);
-    assert.equal(grid.canvasHeight/grid.h,grid.scale);
-    assert.ok(grid.left<=0&&grid.top<=0);
-    assert.ok(grid.left+grid.canvasWidth>=grid.physicalWidth);
-    assert.ok(grid.top+grid.canvasHeight>=grid.physicalHeight);
-    if(width<=height&&width<=440)assert.ok(grid.w>=width,'Keep phone detail on fractional-density displays');
-    const scene=await makeScene(grid.w,grid.h),title=scene.text;
-    assert.ok(title.x>=1&&title.x+title.width<grid.w);
-    assert.ok(Math.abs(title.x+title.width/2-grid.w/2)<=.5);
-    assert.ok(Math.abs(title.y+title.height/2-grid.h/2)<=.5);
-    assert.ok(scene.fit.x<=0&&scene.fit.y<=0);
-    assert.ok(scene.fit.x+scene.fit.width>=grid.w&&scene.fit.y+scene.fit.height>=grid.h);
-    const canvas=createCanvas(grid.w,grid.h);
-    scene.draw(canvas.getContext('2d'),0,{motion:false});
-    const data=pixels(canvas);
-    for(const offset of [0,(grid.w-1)*4,((grid.h-1)*grid.w)*4,(grid.w*grid.h-1)*4])assert.equal(data[offset+3],255,'No transparent corner');
-    for(let row=0;row<font.height;row++)for(let col=0;col<font.width;col++){
-      if(font.rows[row][col]!=='1')continue;
-      for(let y=0;y<title.scale;y++)for(let x=0;x<title.scale;x++){
-        const i=((title.y+row*title.scale+y)*grid.w+title.x+col*title.scale+x)*4;
-        assert.deepEqual(Array.from(data.subarray(i,i+4)),[255,241,219,255],'Glyph must survive compositing exactly');
-      }
+test('fallback PNGs decode at the native dimensions recorded by the scene', async () => {
+  for (const asset of Object.values(scenes.assets)) {
+    assert.match(asset.src, /\.png(?:\?|$)/);
+    const image = await loadImage(path.join(ROOT, asset.src.split('?')[0]));
+    assert.equal(image.width, asset.width, `${asset.id} width`);
+    assert.equal(image.height, asset.height, `${asset.id} height`);
+  }
+  assert.equal(scenes.variant(390, 844).id, 'portrait');
+  assert.equal(scenes.variant(1440, 900).id, 'landscape');
+  assert.equal(scenes.variant(2560, 1080).id, 'panorama');
+});
+
+test('responsive still and motion frames cover the display with square pixels and exact centered letters', async t => {
+  const viewports = [[320, 568, 1], [320, 568, 1.5], [390, 844, 3], [768, 1024, 2],
+    [1440, 900, 1], [1440, 900, 1.25], [1440, 900, 2], [1920, 1080, 1],
+    [2560, 1080, 1], [844, 390, 2]];
+  for (const [width, height, dpr] of viewports) await t.test(`${width}×${height}, DPR ${dpr}`, () => {
+    const grid = art.layout(width, height, dpr);
+    for (const key of ['w', 'h', 'scale', 'canvasWidth', 'canvasHeight', 'left', 'top',
+      'physicalWidth', 'physicalHeight']) assert.ok(Number.isInteger(grid[key]), key);
+    assert.ok(grid.w > 0 && grid.h > 0 && grid.scale > 0);
+    assert.equal(grid.canvasWidth, grid.w * grid.scale);
+    assert.equal(grid.canvasHeight, grid.h * grid.scale);
+    assert.ok(grid.left <= 0 && grid.top <= 0);
+    assert.ok(grid.left + grid.canvasWidth >= grid.physicalWidth);
+    assert.ok(grid.top + grid.canvasHeight >= grid.physicalHeight);
+    assert.ok(grid.canvasWidth - grid.physicalWidth < grid.scale);
+    assert.ok(grid.canvasHeight - grid.physicalHeight < grid.scale);
+    const scene = scenes.create(grid.w, grid.h, createCanvas), title = scene.text;
+    assert.ok(title.x >= 1 && title.x + title.width < grid.w);
+    assert.ok(title.y >= 1 && title.y + title.height < grid.h);
+    assert.ok(Number.isInteger(title.scale) && title.scale > 0);
+    assert.equal(title.width, font.width * title.scale);
+    assert.equal(title.height, font.height * title.scale);
+    assert.ok(Math.abs(title.x + title.width / 2 - grid.w / 2) <= .5);
+    assert.ok(Math.abs(title.y + title.height / 2 - grid.h / 2) <= .5);
+    for (const [time, options, label] of [[0, { motion: false }, 'still'], [8.3, {}, 'motion']]) {
+      const data = render(scene, time, options);
+      assertOpaquePalette(data, label);
+      assertGlyphs(data, scene);
     }
   });
 });
 
-test('the shooting star leads its trail down-left in every composition',async()=>{
-  for(const [width,height]of [[720,450],[390,844],[1280,540]]){
-    const scene=await makeScene(width,height);
-    const early=scene.meteorAt(7.85),later=scene.meteorAt(8.3);
-    assert.ok(early&&later);
-    assert.ok(later.head.x<early.head.x&&later.head.y>early.head.y,'Head moves down-left');
-    for(const frame of [early,later])for(const p of frame.trail){
-      assert.ok(Number.isInteger(p.x)&&Number.isInteger(p.y));
-      assert.ok(p.x>=frame.head.x&&p.y<=frame.head.y,'Tail must stay up-right of its head');
+test('both cloud sprites have transparent padding and one connected silhouette without cutout holes', () => {
+  assert.deepEqual(Object.keys(clouds).sort(), ['small', 'wide']);
+  for (const [name, cloud] of Object.entries(clouds)) {
+    const width = cloud.rows[0].length, height = cloud.rows.length;
+    assert.ok(width > 4 && height > 4);
+    assert.ok(cloud.rows.every(row => row.length === width), `${name}: rows must share one pixel grid`);
+    for (const row of cloud.rows) for (const symbol of row) {
+      assert.ok(Object.hasOwn(cloud.palette, symbol), `${name}: unknown palette index ${symbol}`);
     }
-    assert.equal(scene.meteorAt(0),null);
-    assert.equal(scene.meteorAt(10),null);
+    const canvas = createCanvas(width, height);
+    art.sprite(canvas.getContext('2d'), cloud.rows, 0, 0, cloud.palette);
+    const data = pixels(canvas), mask = new Uint8Array(width * height);
+    let solidCount = 0;
+    for (let index = 0; index < mask.length; index++) {
+      const alpha = data[index * 4 + 3];
+      assert.ok(alpha === 0 || alpha === 255, `${name}: sprite edges must not be antialiased`);
+      mask[index] = alpha === 255 ? 1 : 0;
+      solidCount += mask[index];
+      const x = index % width, y = Math.floor(index / width);
+      if (x < 2 || x >= width - 2 || y < 2 || y >= height - 2) {
+        assert.equal(alpha, 0, `${name}: complete artwork needs two transparent border pixels`);
+      }
+    }
+    assert.ok(solidCount > 0);
+    const body = connectedFrom(mask, width, height, [mask.indexOf(1)], 1);
+    assert.equal(body.reduce((sum, value) => sum + value, 0), solidCount,
+      `${name}: the cloud must form one solid connected silhouette`);
+    const outside = connectedFrom(mask, width, height, [0], 0);
+    for (let index = 0; index < mask.length; index++) {
+      if (!mask[index]) assert.equal(outside[index], 1, `${name}: no enclosed transparent cutout`);
+    }
   }
 });
 
-test('lake motion never changes pixels outside its reviewed open-water region',async()=>{
-  for(const [width,height]of [[720,450],[390,844],[1280,540]]){
-    const scene=await makeScene(width,height),before=pixels(scene.background);
-    const target=createCanvas(width,height),ctx=target.getContext('2d');
-    ctx.imageSmoothingEnabled=false;ctx.drawImage(scene.background,0,0);
-    ambient.drawWater(ctx,scene.background,scene.waterBands,2.3);
-    const after=pixels(target),allowed=new Uint8Array(width*height);
-    for(const band of scene.waterBands){
-      assert.ok(band.x>=2&&band.x+band.width<=width-2,'Leave a sample margin');
-      allowed.fill(1,band.y*width+band.x,band.y*width+band.x+band.width);
+test('the meteor head moves down-left and its tail records earlier head positions', () => {
+  for (const [width, height] of compositions) {
+    const scene = scenes.create(width, height, createCanvas);
+    const earlyTime = 8.05, laterTime = 8.5;
+    const early = scene.meteorAt(earlyTime), later = scene.meteorAt(laterTime);
+    assert.ok(early && later);
+    assert.ok(later.head.x < early.head.x && later.head.y > early.head.y);
+    for (const time of [earlyTime, 8.073, laterTime, 8.517]) {
+      const frame = scene.meteorAt(time);
+      assert.ok(frame.velocity.x < 0 && frame.velocity.y > 0);
+      assert.deepEqual([frame.trail[0].x, frame.trail[0].y], [frame.head.x, frame.head.y]);
+      for (const [index, point] of frame.trail.entries()) {
+        assert.ok(Number.isInteger(point.x) && Number.isInteger(point.y));
+        assert.ok(point.x >= frame.head.x && point.y <= frame.head.y);
+        if (index > 0) {
+          assert.ok(point.x >= frame.trail[index - 1].x && point.y <= frame.trail[index - 1].y,
+            'Successive tail points must extend farther up-right');
+        }
+        const previous = scene.meteorAt(time - index * ambient.meteorDefaults.tailSeconds / (frame.trail.length - 1));
+        assert.ok(previous);
+        // At a half-pixel boundary, equivalent historical times can differ in
+        // their final floating-point bit and round to adjacent native cells.
+        assert.ok(Math.abs(point.x - previous.head.x) <= 1 && Math.abs(point.y - previous.head.y) <= 1,
+          'A tail cell must match the earlier head within one native rounding cell');
+      }
     }
-    let changed=0;
-    for(let pixel=0;pixel<width*height;pixel++){
-      const i=pixel*4;
-      const different=before[i]!==after[i]||before[i+1]!==after[i+1]||before[i+2]!==after[i+2];
-      if(different){changed++;assert.equal(allowed[pixel],1,'The bank and all non-water artwork must remain still');}
+    const repeated = scene.meteorAt(earlyTime + ambient.meteorDefaults.period);
+    assert.ok(Math.abs(repeated.head.x - early.head.x) <= 1 && Math.abs(repeated.head.y - early.head.y) <= 1,
+      'The next cycle must repeat the trajectory within one native rounding cell');
+    assert.equal(scene.meteorAt(0), null);
+    assert.equal(scene.meteorAt(10), null);
+  }
+});
+
+test('reduced-motion rendering stays byte-identical regardless of elapsed time or previous animation', () => {
+  for (const [width, height] of compositions) {
+    const scene = scenes.create(width, height, createCanvas);
+    const baseline = render(scene, 0, { motion: false });
+    render(scene, 8.3);
+    for (const time of [1.75, 8.3, 123.456]) {
+      assert.deepEqual(render(scene, time, { motion: false }), baseline);
     }
-    assert.ok(changed>100,'Water should visibly change');
-    assert.deepEqual(pixels(scene.background),before,'Animation cannot accumulate distortion into its source');
+  }
+});
+
+test('native lake animation is deterministic and changes pixels only below its horizon', () => {
+  for (const [width, height] of compositions) {
+    const horizon = Math.round(height * .64), reflectionX = Math.round(width * .78);
+    const canvas = createCanvas(width, height), context = canvas.getContext('2d');
+    context.fillStyle = '#112233'; context.fillRect(0, 0, width, height);
+    landscape.lake(context, width, height, horizon, 0, reflectionX);
+    const still = pixels(canvas);
+    landscape.lake(context, width, height, horizon, 1.3, reflectionX);
+    const moving = pixels(canvas);
+    let changed = 0;
+    for (let index = 0; index < width * height; index++) {
+      const offset = index * 4, row = Math.floor(index / width);
+      if (row < horizon) {
+        assert.deepEqual(Array.from(moving.subarray(offset, offset + 4)), [17, 34, 51, 255],
+          'Lake drawing must leave the entire sky and land region untouched');
+      }
+      assert.equal(moving[offset + 3], 255);
+      if (still[offset] !== moving[offset] || still[offset + 1] !== moving[offset + 1]
+        || still[offset + 2] !== moving[offset + 2]) {
+        changed++;
+        assert.ok(row > horizon, 'Animation cannot move the horizon or any pixel above it');
+      }
+    }
+    assert.ok(changed > 0, 'The lake should contain visible animated wavelets');
+    landscape.lake(context, width, height, horizon, 17.6, reflectionX);
+    landscape.lake(context, width, height, horizon, 1.3, reflectionX);
+    assert.deepEqual(pixels(canvas), moving, 'Drawing other times cannot accumulate changes');
   }
 });

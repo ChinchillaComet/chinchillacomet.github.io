@@ -6,44 +6,9 @@
   const context=canvas.getContext('2d',{alpha:false});
   if(!context||!globalThis.PixelScene||!globalThis.PixelArt||!globalThis.PixelTypography)return;
   const motion=window.matchMedia('(prefers-reduced-motion: reduce)');
-  const images=new Map();
   let scene,logical,grid,animation=0,resizeFrame=0,elapsed=0,lastTick=null,previousFrame=null;
-  let renderedKey='',pendingKey='',requestVersion=0;
+  let renderedKey='';
   const makeCanvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
-
-  function imageFor(variant) {
-    if(images.has(variant.src))return images.get(variant.src);
-    const entry={status:'loading',image:null,promise:null};
-    images.set(variant.src,entry);
-    // Cache the in-flight decode as well as its result. Resizes must not start
-    // duplicate requests, and a failed asset must not create a retry loop.
-    entry.promise=(async()=>{
-      const image=new Image();
-      image.decoding='async';
-      if(typeof image.decode==='function') {
-        image.src=variant.src;
-        await image.decode();
-      } else {
-        await new Promise((resolve,reject)=>{
-          image.onload=()=>resolve();
-          image.onerror=()=>reject(new Error('The scene image could not load.'));
-          image.src=variant.src;
-          if(image.complete) {
-            if(image.naturalWidth>0)resolve();
-            else reject(new Error('The scene image is unavailable.'));
-          }
-        });
-        image.onload=null;image.onerror=null;
-      }
-      if(!image.naturalWidth||!image.naturalHeight)throw new Error('The scene image is empty.');
-      return image;
-    })().then(image=>{
-      entry.status='ready';entry.image=image;return image;
-    },()=>{
-      entry.status='failed';return null;
-    });
-    return entry;
-  }
 
   function stopAnimation() {
     if(animation)cancelAnimationFrame(animation);
@@ -96,30 +61,12 @@
     const bounds=container.getBoundingClientRect();
     if(bounds.width<=0||bounds.height<=0)return;
     const next=globalThis.PixelArt.layout(bounds.width,bounds.height,window.devicePixelRatio||1);
-    const variant=globalThis.PixelScene.variant(next.w,next.h);
-    const key=[next.physicalWidth,next.physicalHeight,next.dpr,variant.id,variant.src].join('|');
-    if((scene&&key===renderedKey)||key===pendingKey)return;
-    const version=++requestVersion;
-    pendingKey='';
-    const entry=imageFor(variant);
-    if(entry.status!=='ready') {
-      showFallback();
-      if(entry.status==='loading') {
-        pendingKey=key;
-        entry.promise.then(image=>{
-          if(version!==requestVersion)return;
-          pendingKey='';
-          // Bounds and DPR may have changed during decoding. Read them again
-          // rather than installing a scene built for an obsolete viewport.
-          if(image)queueResize();
-        });
-      }
-      return;
-    }
+    const key=[next.physicalWidth,next.physicalHeight,next.dpr].join('|');
+    if(scene&&key===renderedKey)return;
     let nextLogical,nextScene;
     try {
       nextLogical=makeCanvas(next.w,next.h);
-      nextScene=globalThis.PixelScene.create(next.w,next.h,makeCanvas,entry.image,variant);
+      nextScene=globalThis.PixelScene.create(next.w,next.h,makeCanvas);
     } catch {
       showFallback();return;
     }
@@ -140,5 +87,5 @@
   if('ResizeObserver'in window)new ResizeObserver(queueResize).observe(container);
   document.addEventListener('visibilitychange',updateMotion);
   motion.addEventListener('change',updateMotion);
-  watchDensity();resize();updateMotion();
+  watchDensity();resize();
 })();

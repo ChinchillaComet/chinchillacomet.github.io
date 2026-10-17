@@ -1,22 +1,23 @@
 # Verification
 
-Install development dependencies and run the suite:
-
 ```sh
 npm ci
 npm test
+npm run render:art
 ```
 
-`art.test.cjs` uses the same renderer and optimized artwork assets as the page. It
-checks the exact Welcome glyphs, image dimensions and variant selection, complete
-responsive frame coverage, integer display scaling, centred lettering, meteor
-head/tail direction and confinement of moving pixels to the reviewed lake region.
+`art.test.cjs` loads the same native renderer as the page. It checks the exact
+Welcome glyphs and sole visible word, fallback dimensions, complete responsive
+frames, square physical pixels, centred lettering, a limited opaque palette,
+cloud sprite integrity, meteor direction, reduced-motion stills, and confined
+water animation.
 
-`lifecycle.test.cjs` uses a small mock DOM and controllable image decodes. It checks
-first paint, cached loads, stale orientation loads, failures, current viewport and
-DPR after loading, reduced motion, page visibility, resize coalescing, zero-size
-recovery and the 24 FPS cap.
+`lifecycle.test.cjs` uses a small mock DOM and controllable frame clock. It checks
+synchronous first paint, fallback and recovery after rendering failures,
+reduced motion, hidden-page timing, resize coalescing, zero-size recovery,
+display-density changes, and the 24 FPS cap. No image decoding is involved.
 
-These checks do not judge artistic quality or substitute for browser QA. Review
-rendered desktop, portrait, tablet and panoramic compositions visually. Run
-`npm run render:art` to regenerate the committed desktop and phone previews.
+These checks establish rendering behavior, not artistic quality. Review native
+and enlarged desktop, portrait, tablet, and panoramic frames visually. The
+render script produces the committed PNG fallbacks and page previews without
+lossy image compression or resampling of the native artwork.

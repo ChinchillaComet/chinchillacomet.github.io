@@ -1,75 +1,83 @@
 # Welcome page
 
-A static GitHub Pages landing page with one visible word: **Welcome**. The repository
-root is served directly. There is no build step, remote font service, analytics,
-or runtime package dependency.
+A static GitHub Pages landing page with one visible word: **Welcome**. The
+repository root is served directly. There is no build step, analytics, remote
+font service, or runtime package dependency.
 
-## Artwork workflow
+## Native artwork
 
-The third revision replaces the earlier procedural tree, clouds, mountains and
-water with three detailed anime-inspired pixel-art illustrations. The images
-were generated with the built-in ImageGen tool, visually reviewed, and composed
-separately for ordinary landscape, portrait and panoramic displays. The prompts
-and source dimensions are recorded in `assets/artwork/README.md`.
+Revision 4 replaces the generated illustration plates with a small scene drawn
+directly on its native pixel grid. `art.js` contains fixed cloud bitmap rows,
+authored mountain and canopy contours, connected light/shadow shapes, and a few
+foreground sprites. Shapes are filled with integer scanlines or `fillRect`;
+the renderer does not use antialiased paths, gradients, blur, dithering, random
+surface texture, palette-reduced illustrations, or large source images.
 
-The illustrations are delivered as compact WebP assets on deliberate base grids:
-768 × 512 for landscape, 444 × 888 for portrait and 956 × 412 for panorama.
-They are rasterized with nearest-neighbour sampling and encoded at WebP quality
-95; the full-size working renders are not sent to visitors. Each viewport loads
-only its selected composition. The `<picture>` element uses the same breakpoints as
-the canvas renderer, so a complete illustration is also available before
-JavaScript starts and when JavaScript is unavailable.
+The palette is deliberately limited. Static reviewed frames contain 26 opaque
+colours, with one additional colour available to the firefly animation. The sky
+is a single lavender swatch. The cherry canopy has broad connected blossom
+masses and a continuous shadow underside; the phone uses an overhanging bough
+rather than stretching the desktop trunk. Clouds have transparent padding on
+all four sprite edges and retain their complete contours during motion.
 
-Visual review is the quality gate. Review the actual composed page at desktop,
-phone, tablet and wide-screen sizes, with particular attention to coherent tree
-branches, cloud contours, moon visibility, shoreline detail and the centred
-heading. Automated checks establish rendering behavior; they cannot establish
-whether an illustration is beautiful or hand-crafted.
+Mountains use three flat depth layers. Water marks form compact groups near the
+shore and become broader, more widely spaced strokes toward the viewer. The
+moon reflection widens in broken groups. The foreground remains quiet, with a
+small lantern, a few flowers, and three shoreline stones.
+
+Visual review is a separate quality gate from the tests. Review the actual
+compositions at native resolution and integer enlargement, including desktop,
+phone, tablet, and wide screens. Prefer coherent silhouettes and a few well
+placed colour clusters over adding surface marks.
 
 ## Display grid and type
 
-`pixel.js` chooses a logical raster grid for the viewport and display density.
-The finished frame is enlarged by a whole number of physical display pixels,
-with image smoothing disabled. The canvas origin is also aligned to physical
-pixels. This makes the visible pixel grid consistent across the artwork,
-lettering and effects. The source illustration is sampled into that grid once
-per resize; it is not redrawn procedurally or subjected to palette reduction.
+`pixel.js` selects a small logical grid and an integer number of physical display
+pixels for each scene pixel. `main.js` enlarges the complete frame with smoothing
+disabled and aligns its origin to physical pixels. The same grid contains the
+scenery, text, clouds, and animation. Viewport changes recompose the scene;
+they do not stretch or resample the native sprites.
 
-At 1440 × 900 and a device pixel ratio of 1, the page uses a 720 × 450 logical
-frame, enlarged exactly 2×. A 390 × 844 phone uses 390 × 844 logical pixels at
-integer device densities. Fractional-density phones preserve at least that much
-detail. Do not restore the old coarse 195-column phone rendering grid.
+At a device pixel ratio of 1:
 
-`typography.js` contains the exact native bitmap geometry of Press Start 2P by
-Cody Boisclair. The original unmodified font and its SIL Open Font License are
-in `assets/fonts/`. The real document `<h1>` remains available to assistive
-technology and uses the font directly when the canvas is unavailable. The
-visible canvas glyphs use the same outlines, with a cream fill and a dark pixel
-outline. No lettering is baked into the generated landscape images.
+| Display | Native frame | Integer enlargement |
+| --- | --- | --- |
+| 1440 × 900 | 360 × 225 | 4× |
+| 390 × 844 | 195 × 422 | 2× |
+| 2560 × 1080 | 512 × 216 | 5× |
 
-To regenerate the font mask and `typography.js`, install Python's `fontTools`
-package and run `python assets/fonts/build-welcome-mask.py`.
+`typography.js` retains the exact bitmap geometry of Press Start 2P by Cody
+Boisclair. The original font and its SIL Open Font License are in `assets/fonts/`.
+The real document `<h1>` remains available to assistive technology and provides
+the heading when JavaScript or canvas is unavailable. The visible canvas glyphs
+use the same letter shapes, a cream fill, and a dark pixel outline. Text is never
+baked into the scenery fallback assets.
 
-## Animation
+To regenerate the font mask, install Python's `fontTools` package and run
+`python assets/fonts/build-welcome-mask.py`.
 
-`scene.js` caches the fitted illustration and heading. `ambient.js` provides
-restrained motion on the same logical grid:
+## Motion and fallback
 
-- The lake samples narrow strips of its actual painted reflections with a
-  horizontal offset of at most one logical pixel. The source canvas is immutable,
-  so distortion cannot accumulate. Reviewed boundaries stay within open water;
-  banks, lanterns and foreground rocks remain stationary.
-- Petals drift from the canopy regions. A few fireflies and stars pulse gently.
-  The heading has an exclusion area to keep particles clear of its letters.
-- The shooting star moves diagonally down-left. Every tail point is an earlier
-  position of the same head, keeping the tapered tail up-right behind it. The
-  first pass begins after 7.5 seconds and subsequent passes are 29 seconds apart.
+`scene.js` caches the sky, cloud sprites, mountains, garden, and title. Cloud
+positions move slowly in whole-pixel steps. Water reflection groups move by at
+most one native pixel. A few petals, stars, and fireflies provide sparse motion;
+particles avoid the heading. Every frame starts with the complete background,
+so animation cannot leave trails or accumulate holes in the artwork.
 
-Animation renders at no more than 24 frames per second, pauses in hidden tabs,
-and becomes a still when reduced motion is requested. `main.js` caches decoded
-images, ignores obsolete orientation loads, and keeps the static picture and
-heading visible until a complete frame is ready. Loading or rendering failures
-leave that fallback in place.
+The shooting star travels down-left. Its tail consists of earlier positions of
+the same head and stays up-right behind it. Its first pass begins after 7.5
+seconds; later passes are 29 seconds apart.
+
+`main.js` constructs the native scene synchronously without image loading or
+decoding. It displays the canvas only after a successful complete first frame.
+Animation is capped at 24 FPS, pauses when the page is hidden, and becomes a
+fixed still when reduced motion is requested. A rendering failure restores the
+static picture and real heading.
+
+The three tiny lossless PNG fallbacks in `assets/` are rendered by this same
+code. They support initial display, unavailable JavaScript, and renderer errors.
+Only the appropriate composition is selected by the `<picture>` element. The
+former generated WebP illustrations are no longer part of the site.
 
 ## Development and verification
 
@@ -79,17 +87,18 @@ npm test
 npm run render:art
 ```
 
-The pinned `@napi-rs/canvas` development dependency renders the actual scene for
-regression checks and produces `assets/preview.webp` and
-`assets/preview-mobile.webp`. It is not loaded by the website.
+The pinned `@napi-rs/canvas` development dependency renders the scene for checks
+and generates the lossless fallback PNGs and desktop/phone previews. It is not
+loaded by visitors.
 
-The tests cover exact font glyphs, responsive frame coverage, integer display
-scaling, heading centring, the meteor's direction and trailing geometry, water
-confinement, image loading failures and races, hidden/reduced-motion behavior,
-resize coalescing and display-density changes. Native canvas previews were
-visually reviewed; an interactive browser session was not available in the
-current editing environment, so browser interaction QA is not claimed.
+The tests check exact font glyphs, frame coverage, integer display scaling,
+centred lettering, opaque limited-palette output, cloud sprite integrity,
+meteor direction, deterministic water motion, reduced motion, rendering
+failures, page visibility, resize coalescing, and display-density changes.
+Native canvas renders were visually reviewed; an interactive browser session
+was unavailable in the editing environment, so interactive browser QA is not
+claimed.
 
-When publishing a revision, update the asset version consistently in
-`index.html` and `scene.js`, regenerate the page previews, and verify the deployed
-HTML and artwork. Keep the font attribution and source image documentation.
+For a new revision, update version queries in `index.html` and `scene.js`,
+regenerate assets, review the actual rendered frames, and verify the published
+files. Preserve font attribution and licensing.

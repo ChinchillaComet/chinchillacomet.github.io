@@ -1,4 +1,4 @@
-/* Restrained ambient motion, snapped to the illustration's display grid. */
+/* Restrained ambient motion on the same native pixel grid as the scenery. */
 (() => {
   'use strict';
 
@@ -61,8 +61,8 @@
   }
 
   const meteorColors = Object.freeze({
-    head: ['#ae8fb9', '#e2bdd3', '#ffe6d8', '#fff8e7'],
-    trail: ['#f7ddde', '#e8c0d7', '#d5a3cf', '#b583bd', '#936aab', '#795898'],
+    head: ['#aa89ba', '#efb4c4', '#ffddcd', '#fff1d8'],
+    trail: ['#ffddcd', '#efb4c4', '#d49cbd', '#aa89ba'],
   });
 
   function drawMeteor(context, geometry, colors = meteorColors) {
@@ -84,13 +84,13 @@
   }
 
   const particleColors = Object.freeze({
-    petal: ['#bc7aaa', '#df9fc0', '#ffd1da'],
-    firefly: ['#778b95', '#b8c59c', '#f3e4aa', '#fff1c5'],
+    petal: ['#a45c86', '#c87a9b', '#efb4c4'],
+    firefly: ['#668073', '#9b9b81', '#edb781', '#fff1d8'],
   });
 
   /**
-   * Particle sources/regions use image fractions, not CSS coordinates.
-   * Tune them to the actual tree and foreground after selecting the illustration.
+   * Particle sources/regions use scene fractions, not CSS coordinates.
+   * Their origins follow the authored tree and foreground composition.
    * `exclude` is an optional logical-pixel rectangle around the title.
    */
   function create(width, height, options = {}) {
@@ -156,30 +156,8 @@
     });
   }
 
-  /**
-   * Pure ±1 pixel offsets for copying original lake scanlines. The bands passed
-   * to drawWater must already sit wholly inside the painted water, with a margin
-   * of at least two source pixels from every shoreline, rock, and reflection edge
-   * that should stay fixed. The source canvas must remain immutable.
-   *
-   * Each band: {x, y, width, height, phase?}. Never use the output as the source.
-   */
-  function waterOffsetAt(time, y, phase = 0) {
-    return Math.round(Math.sin(time * .8 + y * .13 + phase));
-  }
-  function drawWater(context, source, bands, time) {
-    context.imageSmoothingEnabled = false;
-    for (const band of bands) {
-      const dx = waterOffsetAt(time, band.y, band.phase ?? 0);
-      // The containing scene has already drawn source once this frame. Shifted
-      // sampling stays inside the lake and cannot drag the shore into the water.
-      context.drawImage(source, band.x + dx, band.y, band.width, band.height,
-        band.x, band.y, band.width, band.height);
-    }
-  }
-
   globalThis.PixelAmbient = Object.freeze({
-    create, meteorAt, drawMeteor, waterOffsetAt, drawWater,
+    create, meteorAt, drawMeteor,
     meteorDefaults, meteorColors, particleColors,
   });
 })();

@@ -6,7 +6,7 @@
   font-display: swap;
 }
 
-:root { color-scheme: dark; background: #242340; }
+:root { color-scheme: dark; background: #655f91; }
 * { box-sizing: border-box; }
 html, body {
   width: 100%; height: 100%; margin: 0;
@@ -15,7 +15,7 @@ html, body {
 .landscape {
   position: relative; isolation: isolate;
   width: 100%; height: 100%; height: 100dvh;
-  overflow: hidden; background: #242340;
+  overflow: hidden; background: #655f91;
 }
 .still img {
   position: absolute; inset: 0; display: block;
@@ -30,11 +30,11 @@ html, body {
 .welcome {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  margin: 0; padding: 0; color: #fff1db;
+  margin: 0; padding: 0; color: #fff1d8;
   font-family: 'Press Start 2P', monospace;
   font-weight: 400; font-synthesis: none; font-size: 48px;
   line-height: 1; letter-spacing: 0; white-space: nowrap;
-  text-shadow: 0 -2px #302645, -2px 0 #302645, 2px 0 #302645, 2px 4px #302645;
+  text-shadow: 0 -2px #26243e, -2px 0 #26243e, 2px 0 #26243e, 2px 4px #26243e;
 }
 .is-ready #scenery { visibility: visible; }
 .is-ready .still { display: none; }

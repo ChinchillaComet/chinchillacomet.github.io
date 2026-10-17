@@ -20,15 +20,17 @@ class Events {
   }
 }
 
-// Art is tested with the native canvas renderer. This harness isolates image
-// loading, scheduling, accessibility fallback state, and physical canvas sizing.
+// Art is tested with the native canvas renderer. This harness isolates direct
+// scene initialization, frame scheduling, fallback state, and physical sizing.
 function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
-  hidden = false, decode = true, failScene = false, failDraw = false } = {}) {
+  hidden = false, failScene = false, failDraw = false, failCopy = false,
+  contextAvailable = true, sceneAvailable = true } = {}) {
   const artContext = vm.createContext({});
   vm.runInContext(source('pixel.js'), artContext, { filename: 'pixel.js' });
   vm.runInContext(source('typography.js'), artContext, { filename: 'typography.js' });
   const art = artContext.PixelArt;
-  const draws = [], creations = [], copies = [], images = [];
+  const draws = [], creations = [], copies = [];
+  const faults = { scene: failScene, draw: failDraw, copy: failCopy };
   const raf = new Map(), queries = new Map(), observers = [];
   let nextId = 1;
   function makeCanvas(w = 300, h = 150) {
@@ -37,12 +39,14 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
       imageSmoothingEnabled: true,
       fillRect(...values) { assert.ok(values.every(Number.isInteger)); },
       drawImage(image, x, y, drawWidth, drawHeight) {
+        if (faults.copy) throw new Error('Simulated canvas copy failure');
         assert.ok([x, y, drawWidth, drawHeight].every(Number.isInteger));
         assert.equal(this.imageSmoothingEnabled, false);
         assert.equal(drawWidth % image.width, 0);
         assert.equal(drawHeight % image.height, 0);
         assert.equal(drawWidth / image.width, drawHeight / image.height);
-        copies.push({ image, x, y, width: drawWidth, height: drawHeight });
+        copies.push({ image, x, y, width: drawWidth, height: drawHeight,
+          readyBeforeCopy: container.classList.values.has('is-ready') });
       },
     };
     canvas.getContext = kind => { assert.equal(kind, '2d'); return context; };
@@ -53,11 +57,15 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     getBoundingClientRect() { return this.bounds; },
     classList: {
       values: new Set(),
-      add(value) { this.values.add(value); },
+      add(value) {
+        if (value === 'is-ready') assert.ok(copies.length > 0, 'Fallback must remain until a frame reaches the display canvas');
+        this.values.add(value);
+      },
       remove(value) { this.values.delete(value); },
     },
   };
   const canvas = makeCanvas(1, 1);
+  if (!contextAvailable) canvas.getContext = () => null;
   canvas.parentElement = container;
   const document = new Events();
   document.hidden = hidden;
@@ -79,72 +87,34 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     observe(element) { assert.equal(element, container); }
   }
   window.ResizeObserver = ResizeObserver;
-  class Image {
-    constructor() {
-      this.naturalWidth = 0; this.naturalHeight = 0; this.complete = false;
-      this.onload = null; this.onerror = null; this.decodeCalls = 0;
-      if (decode) {
-        this.decoded = new Promise((resolve, reject) => { this.resolve = resolve; this.reject = reject; });
-        this.decode = () => { this.decodeCalls++; return this.decoded; };
-      }
-      images.push(this);
-    }
-    set src(value) { this._src = value; }
-    get src() { return this._src; }
-    succeed() {
-      this.naturalWidth = this.src.includes('portrait') ? 768 : 1536;
-      this.naturalHeight = this.src.includes('portrait') ? 1365 : 1024;
-      this.complete = true;
-      if (decode) this.resolve();
-      else this.onload?.();
-    }
-    fail() {
-      this.complete = true;
-      if (decode) this.reject(new Error('Simulated image failure'));
-      else this.onerror?.();
-    }
-  }
-  const variants = {
-    landscape: { id: 'landscape', src: './assets/landscape.png', width: 1536, height: 1024 },
-    portrait: { id: 'portrait', src: './assets/portrait.png', width: 768, height: 1365 },
+  const sceneApi = {
+    create(w, h, make) {
+      assert.equal(arguments.length, 3, 'Scene construction must not require external image assets');
+      assert.equal(typeof make, 'function');
+      if (faults.scene) throw new Error('Simulated scene initialization failure');
+      const id = creations.length;
+      creations.push({ w, h });
+      return {
+        draw(target, time, options) {
+          if (faults.draw) throw new Error('Simulated drawing failure');
+          draws.push({ id, time, motion: options.motion });
+          target.fillStyle = art.P.sky0;
+          target.fillRect(0, 0, w, h);
+        },
+      };
+    },
   };
   const context = vm.createContext({
-    document, window, ResizeObserver, Image, PixelArt: art, PixelTypography: artContext.PixelTypography,
-    PixelScene: {
-      variant(w, h) { return w < h ? variants.portrait : variants.landscape; },
-      create(w, h, make, image, variant) {
-        assert.equal(typeof make, 'function');
-        assert.ok(image.naturalWidth > 0 && image.naturalHeight > 0, 'Scene must receive decoded pixels');
-        assert.equal(image.src, variant.src);
-        if (failScene) throw new Error('Simulated renderer initialization failure');
-        const id = creations.length;
-        creations.push({ w, h, image, variant });
-        return {
-          draw(target, time) {
-            if (failDraw) throw new Error('Simulated drawing failure');
-            draws.push({ id, time });
-            target.fillStyle = art.P.sky0;
-            target.fillRect(0, 0, w, h);
-          },
-        };
-      },
-    },
+    document, window, ResizeObserver, PixelArt: art, PixelTypography: artContext.PixelTypography,
+    PixelScene: sceneAvailable ? sceneApi : undefined,
     requestAnimationFrame(callback) { const id = nextId++; raf.set(id, callback); return id; },
     cancelAnimationFrame(id) { raf.delete(id); },
   });
   vm.runInContext(source('main.js'), context, { filename: 'main.js' });
-  const flush = () => new Promise(resolve => setImmediate(resolve));
-  function getImage(which) {
-    const image = typeof which === 'number' ? images[which] : images.find(image => image.src.includes(which));
-    assert.ok(image, `No requested image for ${which}`);
-    return image;
-  }
   return {
-    canvas, container, document, window, draws, creations, copies, images, queries, raf, art,
+    canvas, container, document, window, draws, creations, copies, queries, raf, art,
     ready() { return container.classList.values.has('is-ready'); },
-    flush,
-    async resolveImage(which = 0) { getImage(which).succeed(); await flush(); },
-    async rejectImage(which = 0) { getImage(which).fail(); await flush(); },
+    setFault(name, active) { faults[name] = active; },
     frame(now) {
       for (const id of [...raf.keys()]) {
         if (!raf.has(id)) continue;
