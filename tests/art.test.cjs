@@ -32,7 +32,7 @@ function assertOpaquePalette(data, label) {
     assert.equal(data[offset + 3], 255, `${label}: every scene pixel must be opaque`);
     colors.add((data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2]);
   }
-  assert.ok(colors.size <= 48, `${label}: ${colors.size} colors exceeds the 48-color art budget`);
+  assert.ok(colors.size <= 56, `${label}: ${colors.size} colors exceeds the 56-color art budget`);
 }
 function assertGlyphs(data, scene) {
   const title = scene.text;
@@ -135,8 +135,8 @@ test('responsive still and motion frames cover the display with square pixels an
   });
 });
 
-test('both cloud sprites have transparent padding and one connected silhouette without cutout holes', () => {
-  assert.deepEqual(Object.keys(clouds).sort(), ['small', 'wide']);
+test('all four cloud sprites have transparent padding and one connected silhouette without cutout holes', () => {
+  assert.deepEqual(Object.keys(clouds).sort(), ['puff', 'small', 'wide', 'wisp']);
   for (const [name, cloud] of Object.entries(clouds)) {
     const width = cloud.rows[0].length, height = cloud.rows.length;
     assert.ok(width > 4 && height > 4);

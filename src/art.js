@@ -66,7 +66,9 @@ globalThis.NativeSky = (() => {
   return Object.freeze({draw,sky,moon,stars,palette:P});
 })();
 
-/* Authored, fixed-grid cloud sprites. Dot means transparent; other cells index palette. */
+/* Four authored cloud sprites on one native pixel grid. The existing broad and
+ * small forms are joined by a low wispy bank and a taller three-lobed puff.
+ * Two transparent border cells keep every silhouette intact during clipping. */
 globalThis.NativeClouds = Object.freeze({
   "wide": {
     "rows": [
@@ -136,8 +138,153 @@ globalThis.NativeClouds = Object.freeze({
       "l": "#ad859e",
       "r": "#cf9faa"
     }
+  },
+  "wisp": {
+    "rows": [
+      "..........................................................................",
+      "..........................................................................",
+      "....................................rrrrrrrrr.............................",
+      "...............................rrrrrrrrrllllllllls........................",
+      ".............rrrrrl......rrrrrrrrllllllllllllllllllllls...................",
+      "..........rrrrrrllllllllbrrrrrlllllllllllllllllllllllllbbbs...............",
+      "........rrrrrllllllllllllllllllblllllllllllllllllllllllbbbbbbbs...........",
+      "......ssblllllllllllllllllllllbbbbllllllllllllllllllbbbbbllllllbbss.......",
+      "...sssbbllllllllllllllllllllbbbbbbbbbbbllllllllbbbbbbbbblllllllllbbsss....",
+      "..sssssbbbbllllllllllllllbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbllllllbbbbsssss..",
+      "....sssssssssbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbsssssssss....",
+      "........ssssssssssssssbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbssssssssssss........",
+      ".............ssssssssssssssssssbbbbbbbbbbbbbbbbssssssssssssss.............",
+      "....................ssssssssssssssssssssssssssssssssssss..................",
+      "..................................sssssssssssss...........................",
+      "..........................................................................",
+      ".........................................................................."
+    ],
+    "palette": {
+      ".": null,
+      "s": "#504563",
+      "b": "#79637f",
+      "l": "#ad859e",
+      "r": "#cf9faa"
+    }
+  },
+  "puff": {
+    "rows": [
+      "............................................",
+      "............................................",
+      "...................rrrrrr...................",
+      "................rrrrrrllllls................",
+      "..............rrrrrlllllllllls..............",
+      "............rrrrrllllllllllllls.............",
+      "...........rrrrlllllllllllllllbs............",
+      "..........rrrrllllllllllllllllbs............",
+      ".......rrrrrrllllllllllllllllbbs............",
+      ".....rrrrllllllllllllllllllllbbbbs..........",
+      "....sblllllllllllllllllllllllbbbbbs.........",
+      "....sbllllllllllllllllllllllbbbbbbbs........",
+      "...sbbllllllllbbbllllllllbbbbbbllllbss......",
+      "..ssbbblllllllbbbllllllbbbbbbblllllllbss....",
+      "..sssbbblllllbbbbbbbbbbbbbbbbbllllllllbss...",
+      "...sssbbbbbbbbbbbbbbbbbbbbbbbbbllllllbbss...",
+      "...ssssbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbssss...",
+      "....ssssbbbbbbbbbbbbbbbbbbbbbbbbbbbbsss.....",
+      ".....sssssbbbbbbbbbbbbbbbbbbbbbbbbssss......",
+      "......sssssssssbbbbbbbbbbbbbbbssssss........",
+      "........sssssssssssbbbbbbbsssssss...........",
+      "...........ssssssssssssssssssss.............",
+      "................sssssssssss.................",
+      "...................ssss.....................",
+      "............................................",
+      "............................................"
+    ],
+    "palette": {
+      ".": null,
+      "s": "#504563",
+      "b": "#79637f",
+      "l": "#ad859e",
+      "r": "#cf9faa"
+    }
   }
 });
+
+/* Each lane travels left at a constant native-pixel speed. Its immutable
+ * cycle length reserves room for the widest sprite: a shape can be replaced
+ * only while the old cloud is beyond the left edge and its successor is
+ * beyond the right edge. Time and the seed fully determine every frame. */
+globalThis.NativeCloudMotion = (() => {
+  'use strict';
+  const names = Object.freeze(['wide', 'small', 'wisp', 'puff']);
+  function mix(value) {
+    value = Math.imul(value ^ (value >>> 16), 0x21f0aaad);
+    value = Math.imul(value ^ (value >>> 15), 0x735a2d97);
+    return (value ^ (value >>> 15)) >>> 0;
+  }
+  function create(width, height, makeCanvas, options = {}) {
+    if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1) {
+      throw new RangeError('Cloud motion requires positive native canvas dimensions.');
+    }
+    const seed = (options.seed ?? 0x434c4f55) >>> 0;
+    const sprites = globalThis.NativeClouds;
+    const bitmaps = new Map(), bounds = new Map();
+    for (const name of names) {
+      const cloud = sprites[name], w = cloud.rows[0].length, h = cloud.rows.length;
+      const bitmap = makeCanvas(w, h), context = bitmap.getContext('2d');
+      let left = w, top = h, right = -1, bottom = -1;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const colour = cloud.palette[cloud.rows[y][x]];
+        if (!colour) continue;
+        context.fillStyle = colour;
+        context.fillRect(x, y, 1, 1);
+        left = Math.min(left, x); right = Math.max(right, x);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+      bitmaps.set(name, bitmap);
+      bounds.set(name, Object.freeze({ left, top, right, bottom }));
+    }
+    const maximumWidth = Math.max(...names.map(name => sprites[name].rows[0].length));
+    const entryX = width + 4, exitX = -maximumWidth - 4;
+    const distance = entryX - exitX;
+    const portrait = width <= height;
+    const lanes = Object.freeze([
+      { initial: 'wide', x: Math.round(width * (portrait ? .36 : .39)), y: .25, speed: .43 },
+      { initial: 'small', x: width - 25, y: .35, speed: .35 },
+      { initial: 'small', x: -18, y: .40, speed: .57 },
+    ].map((lane, index) => Object.freeze({
+      ...lane, id: index, phase: entryX - lane.x,
+      salt: mix(seed ^ Math.imul(index + 1, 0x9e3779b9)),
+      period: distance / lane.speed,
+    })));
+    function cloudsAt(time = 0) {
+      const t = Number.isFinite(time) ? Math.max(0, time) : 0;
+      return lanes.map(lane => {
+        const travel = lane.phase + t * lane.speed;
+        const cycle = Math.floor(travel / distance);
+        const name = cycle === 0 ? lane.initial
+          : names[mix(lane.salt ^ Math.imul(cycle, 0x85ebca6b)) % names.length];
+        const bitmap = bitmaps.get(name), body = bounds.get(name);
+        const x = Math.floor(entryX - (travel - cycle * distance));
+        const y = Math.max(0, Math.min(Math.round(height * lane.y),
+          Math.floor(height * .44) - bitmap.height));
+        return Object.freeze({
+          id: lane.id, name, x, y, cycle, speed: lane.speed,
+          width: bitmap.width, height: bitmap.height, bounds: body,
+          visible: x + body.right >= 0 && x + body.left < width,
+          cycleDuration: lane.period,
+          nextWrap: ((cycle + 1) * distance - lane.phase) / lane.speed,
+        });
+      });
+    }
+    function draw(context, time = 0) {
+      const frame = cloudsAt(time);
+      context.imageSmoothingEnabled = false;
+      for (const cloud of frame) {
+        if (cloud.visible) context.drawImage(bitmaps.get(cloud.name), cloud.x, cloud.y);
+      }
+      return frame;
+    }
+    return Object.freeze({ width, height, seed, draw, cloudsAt });
+  }
+  return Object.freeze({ create });
+})();
 
 globalThis.NativeLandscape = (() => {
   'use strict';
@@ -434,6 +581,140 @@ globalThis.NativeLandscape = (() => {
   return Object.freeze({ draw, mountain, lake, lilyPads, palette: P });
 })();
 
+/* Warm paper lanterns, distant shore lights, and their broken water reflections. */
+globalThis.NativeLanterns = (() => {
+  'use strict';
+  const P=Object.freeze({dark:'#9d4b46',paper:'#db8056',amber:'#ecb779',
+    cream:'#fff1d8',halo:'#8b7566',dim:'#92715f',ink:'#493043'});
+  const sprites=Object.freeze({
+    near:[
+      '..ddddd..',
+      '.drrrrrd.',
+      'drooooord',
+      'droohoord',
+      'droohoord',
+      'droohoord',
+      'droohoord',
+      'droohoord',
+      'drooooord',
+      '.drroord.',
+      '..drrrd..',
+      '..d...d..',
+      '...oho...',
+      '....o....'
+    ],
+    far:[
+      '..ddd..',
+      '.drrrd.',
+      'drroord',
+      'drohord',
+      'drohord',
+      'drooord',
+      '.drord.',
+      '..ddd..',
+      '..d.d..',
+      '...o...'
+    ]
+  });
+  const fill=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));};
+  // The outline is fixed: find the neighbouring glow cells once, then animate
+  // their sparse coverage without searching the sprite on every frame.
+  const halos=Object.fromEntries(Object.entries(sprites).map(([name,rows])=>{
+    const w=rows[0].length,bodyHeight=rows.length-(name==='near'?3:2),cells=[];
+    const mask=(xx,yy)=>xx>=0&&xx<w&&yy>=0&&yy<bodyHeight&&rows[yy][xx]!=='.';
+    for(let yy=-3;yy<bodyHeight+3;yy++)for(let xx=-3;xx<w+3;xx++){
+      if(mask(xx,yy))continue;
+      let nearest=4;
+      for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
+        const distance=Math.abs(dx)+Math.abs(dy);
+        if(distance<nearest&&mask(xx+dx,yy+dy))nearest=distance;
+      }
+      if(nearest<=3)cells.push({x:xx,y:yy,distance:nearest});
+    }
+    return [name,{bodyHeight,cells}];
+  }));
+  function glow(c,x,y,name,time,phase){
+    const bright=Math.sin(time*.65+phase)>.3;
+    for(const cell of halos[name].cells){
+      const step=((x+cell.x)*3+(y+cell.y)*5)&7;
+      if(step<(cell.distance===1?4:cell.distance===2?(bright?2:1):1))
+        fill(c,x+cell.x,y+cell.y,1,1,P.halo);
+    }
+  }
+  function create(w,h,horizon,options={}){
+    const portrait=w<=h;
+    const arrangements=[
+      {x:Math.round(w*(portrait?.23:.24)),top:horizon-28,name:'near',phase:.4},
+      {x:Math.round(w*.55),top:horizon-19,name:'far',phase:2.2},
+      {x:Math.round(w*.87),top:horizon-30,name:'far',phase:4.1}
+    ];
+    const shore=[
+      {x:Math.round(w*.39),base:horizon-2,phase:0},
+      {x:Math.round(w*.62),base:horizon-3,phase:2},
+      {x:Math.round(w*.91),base:horizon-4,phase:4}
+    ];
+    function floatingAt(time=0){
+      const t=Number.isFinite(time)?Math.max(0,time):0;
+      return arrangements.map((lantern,index)=>{
+        const rows=sprites[lantern.name],width=rows[0].length,height=rows.length;
+        const cx=lantern.x+Math.round(Math.sin(t*.07+lantern.phase)*2);
+        let y=lantern.top+Math.round(Math.sin(t*.12+lantern.phase));
+        const x=cx-Math.floor(width/2),box=options.exclude;
+        if(box&&x-3<=box.x+box.width&&x+width+3>=box.x)
+          y=Math.max(y,box.y+box.height+5);
+        y=Math.min(y,horizon-height-2);
+        const bounds={x:x-3,y:y-3,width:width+6,height:height+5};
+        const bodyHeight=halos[lantern.name].bodyHeight;
+        return {x,y,cx,width,height,bodyHeight,rows,name:lantern.name,phase:lantern.phase,index,
+          reflectionY:Math.round(2*horizon-(y+bodyHeight/2)),bounds};
+      });
+    }
+    function drawFloating(c,time=0){
+      const colors={d:P.dark,r:P.paper,o:P.amber,h:P.cream};
+      for(const lantern of floatingAt(time)){
+        glow(c,lantern.x,lantern.y,lantern.name,time,lantern.phase);
+        for(let y=0;y<lantern.height;y++)for(let x=0;x<lantern.width;x++){
+          const color=colors[lantern.rows[y][x]];
+          if(color)fill(c,lantern.x+x,lantern.y+y,1,1,color);
+        }
+        // One alternate flame cell gives the open base a quiet flicker.
+        if(Math.floor(time*3+lantern.phase)%4===1)fill(c,lantern.cx,lantern.y+lantern.height-2,1,1,P.cream);
+      }
+    }
+    function drawShore(c,time=0){
+      for(const lamp of shore){
+        const x=lamp.x,y=lamp.base;
+        // Each post has a cap, warm pane and a visible footing on the dark shore.
+        fill(c,x-2,y-7,5,1,P.ink);fill(c,x-1,y-6,3,4,P.dark);
+        fill(c,x,y-6,1,3,P.amber);fill(c,x,y-5,1,1,P.cream);
+        fill(c,x-2,y-2,5,1,P.ink);fill(c,x,y-1,1,2,P.ink);
+        fill(c,x-2,y+1,5,1,P.ink);
+        if(Math.floor(time*.8+lamp.phase)%3===0)fill(c,x+1,y-5,1,1,P.amber);
+      }
+    }
+    function drawReflections(c,time=0){
+      for(const lamp of shore){
+        const shift=Math.round(Math.sin(time*.6+lamp.phase));
+        fill(c,lamp.x-1+shift,horizon+3,3,1,P.dim);
+        fill(c,lamp.x,horizon+5,1,1,P.amber);
+        fill(c,lamp.x-2-shift,horizon+8,4,1,P.dim);
+      }
+      for(const lantern of floatingAt(time)){
+        const y=lantern.reflectionY,x=lantern.cx;
+        const sway=Math.round(Math.sin(time*.8+lantern.phase));
+        const marks=[[-1,-4,3,P.dim],[-2,-2,5,P.paper],[-1,0,3,P.amber],
+          [-3,2,7,P.dim],[0,2,2,P.amber],[-2,5,5,P.paper],[-4,8,8,P.dim]];
+        for(const [dx,dy,width,color]of marks){
+          const row=y+dy;
+          if(row>horizon+1&&row<h)fill(c,x+dx+(dy%2?sway:-sway),row,width,1,color);
+        }
+      }
+    }
+    return Object.freeze({floatingAt,drawFloating,drawShore,drawReflections,shore});
+  }
+  return Object.freeze({create,sprites,palette:P});
+})();
+
 globalThis.NativeGarden = (() => {
   'use strict';
   const P = Object.freeze({
@@ -441,7 +722,7 @@ globalThis.NativeGarden = (() => {
     grassDark:'#172b36', grass:'#2e454a', grassLight:'#526863', grassWarm:'#4c4b3d', grassLit:'#71634c',
     flowerDark:'#35283f', flowerShade:'#563750', flower:'#865271', flowerLight:'#a36c8d', flowerHigh:'#dab5cc',
     stoneDark:'#292e40', stone:'#41495c', stoneLight:'#657185', stoneWarm:'#8b7566',
-    amber:'#ecb779', cream:'#fff1d8'
+    amber:'#ecb779', cream:'#fff1d8', fire:'#db8056', ember:'#9d4b46'
   });
   function rect(c,x,y,w,h,color) { c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h)); }
   function poly(c,points,color) {
@@ -738,63 +1019,207 @@ globalThis.NativeGarden = (() => {
     tuft(c,x-r+7,y+7,2,P.grass);
     if(kind!==2)tuft(c,x+7,y+7,2,P.grass);
   }
-  function lantern(c,x,y) {
-    // y is the ground plane. The emitted light stays inside discrete pixel forms.
-    poly(c,[[x-11,y+7],[x-8,y+5],[x+8,y+5],[x+11,y+7],[x+10,y+9],[x-10,y+9]],P.stoneDark);
-    rect(c,x-4,y,9,6,P.stone);rect(c,x-3,y,3,5,P.stoneWarm);
-    rect(c,x-8,y-13,17,14,P.barkDark);
-    rect(c,x-6,y-11,13,10,P.amber);rect(c,x-4,y-10,9,7,P.cream);
-    rect(c,x-7,y-12,2,13,P.stoneDark);rect(c,x+6,y-12,2,13,P.stoneDark);
-    rect(c,x,y-11,1,11,P.bark);rect(c,x-7,y-1,15,2,P.stoneWarm);
-    poly(c,[[x-12,y-13],[x-10,y-15],[x-6,y-15],[x-4,y-18],
-      [x-2,y-18],[x-1,y-20],[x+2,y-20],[x+3,y-18],[x+5,y-18],
-      [x+7,y-15],[x+10,y-15],[x+12,y-13]],P.ink);
-    rect(c,x-5,y-16,11,1,P.stoneLight);rect(c,x-3,y-18,6,1,P.stone);
-    rect(c,x-9,y-13,19,1,P.barkLight);
+  const groundLevel=h=>Math.round(h*.80);
+  function firePosition(w,h) { return {x:38,y:groundLevel(h)+12}; }
+  // Six authored flame poses share the same base. Each mark is one scene pixel;
+  // the fire curls slowly between connected silhouettes rather than scaling.
+  const flameFrames = [
+    [
+      '.......o.....',
+      '......oo.....',
+      '......ao.....',
+      '.....oao.....',
+      '.....oao.....',
+      '..o..oaao....',
+      '..oo.oaao....',
+      '..oaaoaao.o..',
+      '..oaahaaooo..',
+      '.ooaahhaaoo..',
+      '.oaaahhaaoo..',
+      '.oaaahhaaao..',
+      '.ooaaahhaao..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ],
+    [
+      '......o......',
+      '......oo.....',
+      '.....oao.....',
+      '.....oao.....',
+      '....oaao.....',
+      '....oaao.o...',
+      '..o.oaaooo...',
+      '..ooaahaao...',
+      '..oaahhaao...',
+      '.ooaahhaaoo..',
+      '.oaaahhaaoo..',
+      '.oaahhhaaao..',
+      '.ooaahhaaao..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ],
+    [
+      '.............',
+      '.....o.......',
+      '.....oo......',
+      '.....oa......',
+      '.....oao.....',
+      '.....oao.....',
+      '..o..oaao....',
+      '..oo.oaao....',
+      '..oaaoaao.o..',
+      '.ooaahhaooo..',
+      '.oaahhhaaoo..',
+      '.oaahhhaaoo..',
+      '.ooaahhaaao..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ],
+    [
+      '.............',
+      '.......o.....',
+      '......oo.....',
+      '......ao.....',
+      '..o..oao.....',
+      '..oo.oaao....',
+      '..oaaoaao....',
+      '..oaahaao.o..',
+      '.ooaahhaooo..',
+      '.oaaahhaaoo..',
+      '.oaaahhaaao..',
+      '.oaahhhaaao..',
+      '.ooahhhaaao..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ],
+    [
+      '......o......',
+      '.....oo......',
+      '.....ao......',
+      '.....ao......',
+      '....oao......',
+      '....oaao.o...',
+      '...oaahaao...',
+      '...oaahaao...',
+      '..ooaahhaoo..',
+      '..oaahhhaoo..',
+      '.ooaahhaaao..',
+      '.oaahhhaaao..',
+      '.oaahhaaaoo..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ],
+    [
+      '.............',
+      '......o......',
+      '......oo.....',
+      '.....oao.....',
+      '.....oao.....',
+      '..o..oaao....',
+      '..oo.oaao....',
+      '..oaaoaao....',
+      '..oaahaaoo...',
+      '.ooaahhaao...',
+      '.oaaahhaaoo..',
+      '.oaaahhaaao..',
+      '.ooaahhaaao..',
+      '..oaahhaaoo..',
+      '..coaaaaooc..',
+      '...ccooocc...',
+    ]
+  ];
+  function hearth(c,w,h) {
+    const {x,y}=firePosition(w,h);
+    // A shallow oval depression seats the logs inside a small broken stone ring.
+    // The front lip overlaps the logs; no fire or stones float over the grass.
+    poly(c,[[x-14,y+1],[x-10,y-2],[x+9,y-2],[x+14,y+1],
+      [x+13,y+5],[x+8,y+7],[x-9,y+7],[x-14,y+4]],P.grassDark);
+    poly(c,[[x-11,y],[x-8,y-2],[x+8,y-2],[x+11,y+1],[x+9,y+4],
+      [x-9,y+4]],P.barkDark);
+    // Back rim stones sit behind the fuel, with only the fire-facing edge warm.
+    for(const [sx,sy,width]of [[-11,-2,5],[-5,-3,5],[2,-3,5],[8,-1,4]]) {
+      rect(c,x+sx,y+sy,width,3,P.stoneDark);
+      rect(c,x+sx+1,y+sy,width-1,1,P.stoneWarm);
+      rect(c,x+sx+1,y+sy+1,width-2,1,P.stone);
+    }
+    // Two short split logs cross at the hot centre. End grain is a single cell.
+    poly(c,[[x-9,y-1],[x-6,y-3],[x+9,y+2],[x+7,y+5]],P.barkDark);
+    poly(c,[[x-8,y-1],[x-6,y-2],[x+8,y+3],[x+7,y+4]],P.bark);
+    rect(c,x-8,y-1,2,2,P.barkWarm);rect(c,x+7,y+2,2,2,P.barkWarm);
+    poly(c,[[x-8,y+3],[x-7,y+1],[x+7,y-3],[x+10,y-1],[x-6,y+5]],P.barkDark);
+    poly(c,[[x-7,y+2],[x+7,y-2],[x+8,y-1],[x-6,y+4]],P.bark);
+    rect(c,x-7,y+2,2,2,P.barkWarm);rect(c,x+7,y-2,2,2,P.barkWarm);
+    rect(c,x-3,y,7,2,P.ember);rect(c,x-2,y,2,1,P.fire);
+    rect(c,x+2,y+1,2,1,P.amber);
+    // The visible front half is lower and cooler than the inner heated faces.
+    for(const [sx,sy,width]of [[-13,2,4],[-9,5,5],[-3,6,5],[4,5,5],[10,2,4]]) {
+      rect(c,x+sx,y+sy,width,2,P.stoneDark);
+      rect(c,x+sx,y+sy,width-1,1,P.stone);
+      rect(c,x+sx+1,y+sy,width-2,1,P.stoneWarm);
+    }
+  }
+  function campfire(c,w,h,time=0) {
+    const {x,y}=firePosition(w,h),t=Math.max(0,time);
+    const pose=Math.floor(t*6)%flameFrames.length;
+    const colors={c:P.ember,o:P.fire,a:P.amber,h:P.cream};
+    const rows=flameFrames[pose];
+    for(let yy=0;yy<rows.length;yy++)for(let xx=0;xx<rows[yy].length;xx++) {
+      const color=colors[rows[yy][xx]];
+      if(color)rect(c,x-6+xx,y-16+yy,1,1,color);
+    }
+    // One ember rises at a time, plus a second brief glint. Both use a slow
+    // repeating path and disappear before crossing the tree or the page title.
+    const rise=(t%3.8)/3.8;
+    if(rise<.7) {
+      const ex=x+3-Math.round(rise*6),ey=y-17-Math.round(rise*15);
+      rect(c,ex,ey,1,1,rise<.28?P.amber:P.ember);
+    }
+    const second=((t+1.7)%5.4)/5.4;
+    if(second<.25)rect(c,x-4-Math.round(second*5),y-15-Math.round(second*28),1,1,P.fire);
   }
   function foreground(c,w,h) {
-    const portrait=w<=h, bank=Math.round(h*.84);
-    const reach=Math.min(w-12,Math.round(w*(portrait?.68:.45)));
+    const portrait=w<=h, bank=groundLevel(h);
+    const reach=Math.min(w-12,Math.round(w*(portrait?.72:.46)));
     // 1. Solid bank and its receding lip. Every later object has ground beneath it.
-    poly(c,[[0,bank-5],[13,bank-5],[23,bank-3],[37,bank-2],[48,bank],
-      [60,bank+4],[72,bank+8],[83,bank+14],[95,bank+21],[108,bank+34],
-      [120,bank+49],[reach,h],[0,h]],P.grassDark);
-    poly(c,[[0,bank-5],[13,bank-5],[23,bank-3],[37,bank-2],[48,bank],
-      [60,bank+4],[72,bank+8],[83,bank+14],[95,bank+21],[108,bank+34],
-      [103,bank+33],[91,bank+25],[80,bank+21],[72,bank+15],[61,bank+12],
-      [50,bank+7],[37,bank+5],[26,bank+3],[14,bank+2],[0,bank+3]],P.grass);
-    // 2. Lantern-facing ground is lit as two irregular opaque facets.
-    poly(c,[[16,bank-1],[27,bank-2],[41,bank-1],[53,bank+2],[62,bank+6],
-      [74,bank+10],[69,bank+15],[57,bank+16],[47,bank+19],[35,bank+16],
-      [27,bank+11],[17,bank+9],[11,bank+5]],P.grassWarm);
-    poly(c,[[30,bank+1],[42,bank],[53,bank+3],[59,bank+7],[56,bank+10],
-      [48,bank+11],[39,bank+9],[32,bank+10],[25,bank+6]],P.grassLit);
+    poly(c,[[0,bank-5],[13,bank-5],[25,bank-3],[40,bank-2],[54,bank],
+      [67,bank+4],[78,bank+9],[89,bank+16],[102,bank+25],[113,bank+38],
+      [124,bank+53],[reach,h],[0,h]],P.grassDark);
+    poly(c,[[0,bank-5],[13,bank-5],[25,bank-3],[40,bank-2],[54,bank],
+      [67,bank+4],[78,bank+9],[89,bank+16],[102,bank+25],[113,bank+38],
+      [108,bank+37],[96,bank+29],[85,bank+24],[76,bank+17],[65,bank+12],
+      [53,bank+7],[39,bank+5],[27,bank+3],[14,bank+2],[0,bank+3]],P.grass);
+    // 2. Ground remains in its unlit material colours. The hearth contains its
+    // own small charred centre, and the animated light draws the surrounding pool.
     // 3. Tall plants behind the stones. Stone faces will occlude them next.
-    for(const [x,dy,height]of [[6,-4,5],[28,1,4],[61,7,5],[81,18,5],[111,39,5]])
+    for(const [x,dy,height]of [[6,-4,5],[25,-1,3],[66,6,5],[86,20,5],[116,43,5]])
       tuft(c,x,bank+dy,height,x<65?P.grassLight:P.grass);
     // 4. Stones are ordered from the rear lip toward the viewer.
-    stone(c,68,bank+10,0);stone(c,92,bank+27,1);stone(c,119,bank+47,2);
+    stone(c,74,bank+12,0);stone(c,98,bank+30,1);stone(c,116,bank+61,2);
     // 5. Short foreground plants only touch open ground or stone bases.
-    for(const [x,dy,height]of [[7,14,4],[24,20,3],[47,27,3],[72,38,3],[106,58,3]])
+    for(const [x,dy,height]of [[7,14,4],[20,25,3],[53,30,3],[75,42,3],[108,62,3]])
       if(bank+dy<h)tuft(c,x,bank+dy,height,x<48?P.grassLight:P.grass);
-    for(const [x,dy,lit]of [[10,22,false],[32,32,true],[7,47,false],[58,45,false]])
+    for(const [x,dy,lit]of [[10,26,false],[32,36,true],[7,51,false],[58,49,false]])
       if(bank+dy<h-1)flower(c,x,bank+dy,lit);
     // Fallen petals sit flat on the bank instead of appearing to grow from rocks.
-    for(const [x,dy]of [[18,9],[27,17],[45,21],[17,36],[50,37]])
+    for(const [x,dy]of [[13,8],[19,21],[47,26],[17,39],[50,40]])
       if(bank+dy<h-1)rect(c,x,bank+dy,2,1,P.flower);
-    // 6. The lantern is separate from the stone group, so their silhouettes do not
-    // ambiguously cross. Its stone base sits inside the illuminated grass patch.
-    lantern(c,39,bank-1);
+    // 6. The quiet stone-and-log hearth is cached; its six flame poses are not.
+    hearth(c,w,h);
     // A low far-right bank balances the large tree without another focal object.
     poly(c,[[w-36,h],[w-29,h-4],[w-21,h-7],[w-14,h-7],[w-8,h-10],[w,h-9],[w,h]],P.grassDark);
     poly(c,[[w-27,h-4],[w-21,h-7],[w-14,h-7],[w-8,h-10],[w,h-9],[w,h-7],
       [w-11,h-6],[w-19,h-4]],P.grass);
     tuft(c,w-12,h-7,4,P.grass);
   }
-  return Object.freeze({tree,foreground,wind,palette:P});
+  return Object.freeze({tree,foreground,wind,campfire,firePosition,palette:P});
 })();
 
-/* Palette-aware lantern light. Coverage is dithered; colours remain opaque cells. */
+/* Palette-aware campfire light. Coverage is dithered; colours remain opaque cells. */
 globalThis.NativeLighting = (() => {
   'use strict';
   const bayer=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
@@ -816,16 +1241,18 @@ globalThis.NativeLighting = (() => {
     return ramps;
   }
   function draw(ctx,w,h,time=0){
-    const x=39,y=Math.round(h*.84)-8,radius=30;
+    const fire=globalThis.NativeGarden.firePosition(w,h);
+    const x=fire.x,y=fire.y-7,radius=39;
     const left=Math.max(0,x-radius),top=Math.max(0,y-radius);
     const width=Math.min(w-left,radius*2+1),height=Math.min(h-top,radius*2+1);
     if(width<=0||height<=0)return;
     const frame=ctx.getImageData(left,top,width,height),data=frame.data,colors=palette();
-    // A quiet three-state flame changes only a few edge cells of the light pool.
-    const flicker=[0,.06,0,-.04,0,.03][Math.floor(Math.max(0,time)*3)%6];
+    // This modest variation follows the six hand-authored flame poses. The
+    // nearest surfaces stay warm while only the dithered fringe gently changes.
+    const flicker=[.05,.12,-.03,.08,0,.04][Math.floor(Math.max(0,time)*6)%6];
     for(let yy=0;yy<height;yy++)for(let xx=0;xx<width;xx++){
-      const dx=left+xx-x,dy=(top+yy-y)*1.15,dist=Math.sqrt(dx*dx+dy*dy);
-      const energy=Math.max(0,1-dist/radius),strength=Math.min(2,energy*energy*(3.2+flicker));
+      const dx=left+xx-x,dy=(top+yy-y)*1.12,dist=Math.sqrt(dx*dx+dy*dy);
+      const energy=Math.max(0,1-dist/radius),strength=Math.min(2,energy*energy*(3.3+flicker));
       const base=Math.floor(strength),fraction=strength-base;
       const level=Math.min(2,base+(bayer[(top+yy)%4][(left+xx)%4]<fraction*16?1:0));
       if(level===0)continue;

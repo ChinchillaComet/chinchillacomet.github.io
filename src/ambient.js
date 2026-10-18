@@ -49,6 +49,7 @@
     // Screen coordinates: increasing y is down. Head travels down-left.
     start: [.80, .095], end: [.35, .25],
     period: 29, delay: 7.5, duration: 1.65, tailSeconds: .34,
+    twinkleDelay: .06, twinkleDuration: .82,
   });
 
   /**
@@ -106,9 +107,56 @@
     pixel(context, head.x, head.y, colors.head[level]);
   }
 
+  /**
+   * A single, staggered afterglint follows the departed trail. This is a short
+   * sequence of poses, not a second moving meteor or a repeatedly flashing star.
+   * The little satellites remain within four native cells of the exit point.
+   */
+  function twinkleAt(time, width, height, options = {}) {
+    const config = { ...meteorDefaults, ...options };
+    if (!Number.isFinite(time) || time < config.delay || width <= 0 || height <= 0) return null;
+    const age = wrap(time - config.delay, config.period)
+      - config.duration - config.twinkleDelay;
+    if (age < 0 || age >= config.twinkleDuration) return null;
+    const x = Math.round(config.end[0] * width), y = Math.round(config.end[1] * height);
+    const progress = age / config.twinkleDuration;
+    const sparks = [[0, 0, 0, .70], [4, -3, .17, .61], [-3, 2, .40, .60]];
+    const sparkles = [];
+    for (const [index, [dx, dy, delay, duration]] of sparks.entries()) {
+      const local = (progress - delay) / duration;
+      if (local < 0 || local >= 1) continue;
+      const pose = Math.min(4, Math.floor(local * 5));
+      const level = pose < 3 ? pose : 4 - pose;
+      sparkles.push({ x: x + dx, y: y + dy, level, primary: index === 0 });
+    }
+    return { x, y, age, sparkles };
+  }
+
+  function drawMeteorTwinkle(context, geometry, colors = meteorColors) {
+    if (!geometry) return;
+    for (const spark of geometry.sparkles) {
+      const { x, y, level, primary } = spark;
+      // Only the centre briefly grows to a three-cell-wide star. The two
+      // satellites each stay one or two cells, so the exit remains restrained.
+      if (primary && level === 2) {
+        pixel(context, x - 1, y, colors.trail[0]);
+        pixel(context, x + 1, y, colors.trail[0]);
+        pixel(context, x, y - 1, colors.trail[2]);
+        pixel(context, x, y + 1, colors.trail[2]);
+      } else if (!primary && level === 2) {
+        pixel(context, x, y - 1, colors.trail[2]);
+      }
+      pixel(context, x, y, level === 2 ? colors.head[3]
+        : level === 1 ? colors.trail[0] : colors.trail[2]);
+    }
+  }
+
   const particleColors = Object.freeze({
     petal: ['#865271', '#a36c8d', '#dab5cc'],
-    firefly: ['#8b7566', '#ecb779', '#fff1d8', '#fff1d8'],
+    // The cooler yellow-green makes these hovering insects distinct from the
+    // pink petals and the orange embers from the fire and paper lanterns.
+    firefly: ['#b8c978', '#edf1ae', '#edf1ae', '#fff1d8'],
+    fireflyHalo: ['#687b52', '#b8c978'],
   });
 
   /**
@@ -140,41 +188,83 @@
     });
     const flyLocations=[[.08,.35],[.25,.65],[.42,.1],[.60,.51],[.79,.22],
       [.95,.75],[.31,.94],[.66,.87],[.9,.05]];
-    const fireflies = Array.from({ length: options.fireflyCount ?? 7 }, (_,i) => ({
-      x: (flyRegion[0] + flyLocations[i%flyLocations.length][0] * (flyRegion[2] - flyRegion[0])) * width,
-      y: (flyRegion[1] + flyLocations[i%flyLocations.length][1] * (flyRegion[3] - flyRegion[1])) * height,
-      phase: i * 1.7, cycle: 6 + (i%3)*.7, glint: i % 4,
-    }));
-    const excluded = (x, y) => {
+    // Keep the full glow and two-cell hover envelope away from the title and
+    // local lights. Resolve these zones once at birth, rather than making a fly
+    // vanish whenever its current pose happens to cross an exclusion edge.
+    const flyExclusions = [options.exclude, ...(options.fireflyExclude ?? [])]
+      .filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite))
+      .map(box => ({ left: Math.floor(box.x) - 4, right: Math.ceil(box.x + box.width) + 4,
+        top: Math.floor(box.y) - 3, bottom: Math.ceil(box.y + box.height) + 3 }));
+    function safeAnchor(x, y) {
+      const minX = 4, maxX = width - 5, minY = 3, maxY = height - 4;
+      if (maxX < minX || maxY < minY) return null;
+      x = Math.round(clamp(x, minX, maxX));
+      y = Math.round(clamp(y, minY, maxY));
+      const allowed = (px, py) => px >= minX && px <= maxX && py >= minY && py <= maxY
+        && flyExclusions.every(box => px < box.left || px > box.right
+          || py < box.top || py > box.bottom);
+      if (allowed(x, y)) return { x, y };
+      // Every possible nearest free point lies beside a rectangle edge, a
+      // viewport edge, or on the original axis. This also handles overlapping
+      // light zones without repeated nudges or a frame-dependent search.
+      const xs = [x, minX, maxX], ys = [y, minY, maxY];
+      for (const box of flyExclusions) {
+        xs.push(box.left - 1, box.right + 1);
+        ys.push(box.top - 1, box.bottom + 1);
+      }
+      let best = null, distance = Infinity;
+      for (const px of xs) for (const py of ys) {
+        if (!allowed(px, py)) continue;
+        const next = (px - x) ** 2 + (py - y) ** 2;
+        if (next < distance) { distance = next; best = { x: px, y: py }; }
+      }
+      return best;
+    }
+    const fireflies = Array.from({ length: options.fireflyCount ?? 7 }, (_,i) => {
+      const anchor = safeAnchor(
+        (flyRegion[0] + flyLocations[i%flyLocations.length][0] * (flyRegion[2] - flyRegion[0])) * width,
+        (flyRegion[1] + flyLocations[i%flyLocations.length][1] * (flyRegion[3] - flyRegion[1])) * height);
+      return anchor && { ...anchor, phase: i * 1.7, cycle: 6 + (i%3)*.7, glint: i % 4 };
+    }).filter(Boolean);
+    const excluded = (x, y, radius = 1) => {
       const box = options.exclude;
-      return box && x + 1 >= box.x && x - 1 <= box.x + box.width
-        && y + 1 >= box.y && y - 1 <= box.y + box.height;
+      return box && x + radius >= box.x && x - radius <= box.x + box.width
+        && y + radius >= box.y && y - radius <= box.y + box.height;
     };
-    function particlesAt(time) {
+    // Separate samplers make each system independent: fireflies hover in their
+    // habitat and pulse at their own rates; only petals follow the falling wind.
+    function petalsAt(time) {
+      time = Number.isFinite(time) ? time : 0;
       const wind = windAt(time);
-      const petalFrame = petals.map(petal => {
+      return petals.map(petal => {
         const age = wrap(time + petal.phase, petal.life);
         const travel = wind.displacement - windAt(time - age).displacement;
         const flutter = Math.sin(age * .78 + petal.sway);
         const x = Math.round(petal.x + travel * petal.drift + flutter * (1.5 + wind.gust));
         const y = Math.round(petal.y + petal.fall * age
           + Math.sin(age * .6 + petal.sway) * (1.3 + wind.gust * 1.4) - wind.gust * petal.lift);
-        return { x, y, frame: wrap(Math.floor(age * petal.turn + petal.sway), 8) };
+        return { x, y, frame: wrap(Math.floor(age * petal.turn + petal.sway), 8),
+          bounds: { x: x - 1, y: y - 1, width: 3, height: 3 } };
       }).filter(petal => petal.x >= -2 && petal.x < width + 2 && petal.y < height + 2 && !excluded(petal.x, petal.y));
-      const flyFrame = fireflies.map(fly => {
+    }
+    function firefliesAt(time) {
+      time = Number.isFinite(time) ? time : 0;
+      return fireflies.map(fly => {
         const phase = wrap(time + fly.phase, fly.cycle) / fly.cycle;
         const pulse = (Math.sin(phase * Math.PI * 2)+1)/2;
-        return {
-          x: Math.round(fly.x + Math.sin(time * .31 + fly.phase) * 2),
-          y: Math.round(fly.y + Math.sin(time * .27 + fly.phase) * 2),
-          level: Math.min(3, Math.floor(pulse * 4)), glint: fly.glint,
-        };
-      }).filter(fly => fly.level >= 0 && !excluded(fly.x, fly.y));
-      return { petals: petalFrame, fireflies: flyFrame };
+        const x = Math.round(fly.x + Math.sin(time * .31 + fly.phase) * 1.5
+          + Math.sin(time * .11 + fly.phase) * .5);
+        const y = Math.round(fly.y + Math.sin(time * .27 + fly.phase) * 1.4);
+        return { x, y, level: Math.min(3, Math.floor(pulse * 4)), glint: fly.glint,
+          bounds: { x: x - 2, y: y - 1, width: 5, height: 3 } };
+
+      });
+    }
+    function particlesAt(time) {
+      return { petals: petalsAt(time), fireflies: firefliesAt(time) };
     }
     function drawPetals(context, time, colors = particleColors) {
-      const frame = particlesAt(time);
-      for (const petal of frame.petals) {
+      for (const petal of petalsAt(time)) {
         const { x, y, frame: pose } = petal;
         pixel(context, x, y, colors.petal[pose === 4 ? 0 : 1]);
         // Eight sparse poses suggest a curled petal turning through the light.
@@ -187,28 +277,47 @@
         if (pose === 7) pixel(context, x, y - 1, colors.petal[2]);
       }
     }
-    function drawFireflies(context,time,colors=particleColors){
-      for(const fly of particlesAt(time).fireflies){
-        // Three cells at the peak, one between pulses. The two dimmer rim cells
-        // form a little warm cluster, avoiding oversized plus-shaped lights.
-        const side = fly.glint % 2 ? 1 : -1;
-        const vertical = fly.glint < 2 ? 1 : -1;
-        if(fly.level>=2) pixel(context,fly.x+side,fly.y,colors.firefly[0]);
-        if(fly.level===3) pixel(context,fly.x,fly.y+vertical,colors.firefly[1]);
-        pixel(context,fly.x,fly.y,colors.firefly[fly.level]);
+    function drawFireflies(context, time, colors = particleColors) {
+      const halo = colors.fireflyHalo ?? particleColors.fireflyHalo;
+      for (const fly of firefliesAt(time)) {
+        const { x, y, level } = fly;
+        if (level >= 1) {
+          // A softly stepped 3×3 cluster, wholly opaque and on the same grid as
+          // the insect. Rounded corners give a glow without a large star cross.
+          pixel(context, x - 1, y, halo[0], 3);
+          pixel(context, x, y - 1, halo[0]);
+          pixel(context, x, y + 1, halo[0]);
+        }
+        if (level >= 2) {
+          pixel(context, x - 1, y - 1, halo[0], 3);
+          pixel(context, x - 1, y + 1, halo[0], 3);
+          pixel(context, x - 1, y, halo[1], 3);
+          pixel(context, x, y - 1, halo[1]);
+          pixel(context, x, y + 1, halo[1]);
+        }
+        if (level === 3) {
+          // One additional cell on either side is the maximum five-cell span.
+          // Glows never scale, rotate, blur or blend into the background.
+          pixel(context, x - 2, y, halo[0]);
+          pixel(context, x + 2, y, halo[0]);
+        }
+        pixel(context, x, y, colors.firefly[level]);
       }
     }
     function drawParticles(context,time,colors=particleColors){drawPetals(context,time,colors);drawFireflies(context,time,colors);}
     return Object.freeze({
       meteorAt: time => meteorAt(time, width, height, options.meteor),
       drawMeteor: (context, time, colors) => drawMeteor(context, meteorAt(time, width, height, options.meteor), colors),
-      particlesAt, drawParticles, drawPetals, drawFireflies,
+      twinkleAt: time => twinkleAt(time, width, height, options.meteor),
+      drawMeteorTwinkle: (context, time, colors) => drawMeteorTwinkle(context,
+        twinkleAt(time, width, height, options.meteor), colors),
+      particlesAt, petalsAt, firefliesAt, drawParticles, drawPetals, drawFireflies,
       windAt,
     });
   }
 
   globalThis.PixelAmbient = Object.freeze({
-    create, meteorAt, drawMeteor, windAt,
+    create, meteorAt, drawMeteor, twinkleAt, drawMeteorTwinkle, windAt,
     meteorDefaults, meteorColors, particleColors,
   });
 })();

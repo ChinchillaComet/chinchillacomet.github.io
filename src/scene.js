@@ -21,27 +21,24 @@
     globalThis.NativeLandscape.mountain(rc,width,horizon);
     globalThis.NativeGarden.tree(gc,width,height);
     globalThis.NativeGarden.foreground(gc,width,height);
-    const clouds=[
-      {sprite:globalThis.NativeClouds.wide,x:Math.round(width*(portrait?.36:.39)),y:Math.round(height*.25),phase:0},
-      {sprite:globalThis.NativeClouds.small,x:width-25,y:Math.round(height*.35),phase:1.4},
-      {sprite:globalThis.NativeClouds.small,x:-18,y:Math.round(height*.4),phase:2.8},
-    ].map(cloud=>{
-      const bitmap=makeCanvas(cloud.sprite.rows[0].length,cloud.sprite.rows.length);
-      sprite(bitmap.getContext('2d'),cloud.sprite.rows,0,0,cloud.sprite.palette);
-      return {...cloud,bitmap};
-    });
+    const clouds=globalThis.NativeCloudMotion?.create(width,height,makeCanvas);
     const font=globalThis.PixelTypography;
     const scale=Math.max(1,Math.min(2,Math.floor((width-24)/font.width)));
     const text={x:Math.floor((width-font.width*scale)/2),y:Math.floor((height-font.height*scale)/2),
       width:font.width*scale,height:font.height*scale,scale};
     for(const [dx,dy]of [[-1,0],[1,0],[0,-1],[0,1],[1,2]])sprite(tc,font.rows,text.x+dx,text.y+dy,{'1':P.ink},scale);
     sprite(tc,font.rows,text.x,text.y,{'1':P.cream},scale);
+    const fire=globalThis.NativeGarden.firePosition(width,height);
     const ambient=globalThis.PixelAmbient.create(width,height,{
-      meteor:{start:[.88,.06],end:[portrait?.47:.52,portrait?.28:.30]},
+      meteor:{start:[.88,.06],end:[portrait?.47:.52,.23]},
       petalSources:portrait?[[.31,.12],[.45,.16]]:[[.20,.11],[.30,.15]],
       petalCount:portrait?12:16,
       fireflyRegion:portrait?[.10,.76,.66,.94]:[.07,.79,.43,.94],fireflyCount:portrait?7:9,
+      fireflyExclude:[{x:fire.x-14,y:fire.y-29,width:28,height:38}],
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12},
+    });
+    const lanterns=globalThis.NativeLanterns?.create(width,height,horizon,{
+      exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12}
     });
     function draw(context,time=0,options={}) {
       const t=options.motion===false?0:Math.max(0,time);
@@ -51,14 +48,15 @@
         if(Math.sin(t*.5+star.phase)>.92)rect(context,star.x,star.y,1,1,globalThis.NativeSky.palette.light);
       }
       if(options.motion!==false)ambient.drawMeteor(context,t);
-      for(const cloud of clouds) {
-        const wind=globalThis.PixelAmbient.windAt(t);
-        const drift=Math.round(Math.sin(t*.06+cloud.phase)*3+wind.sway);
-        context.drawImage(cloud.bitmap,cloud.x+drift,cloud.y);
-      }
+      clouds?.draw(context,t);
+      if(options.motion!==false)ambient.drawMeteorTwinkle(context,t);
       context.drawImage(ridge,0,0);
+      lanterns?.drawShore(context,t);
       globalThis.NativeLandscape.lake(context,width,height,horizon,t,moon.x);
+      lanterns?.drawReflections(context,t);
+      lanterns?.drawFloating(context,t);
       context.drawImage(garden,0,0);
+      globalThis.NativeGarden.campfire?.(context,width,height,t);
       globalThis.NativeGarden.wind?.(context,width,height,t);
       globalThis.NativeLighting?.draw(context,width,height,t);
       if(options.motion!==false)ambient.drawPetals(context,t);
@@ -66,7 +64,8 @@
       if(options.title!==false)context.drawImage(title,0,0);
     }
     return Object.freeze({draw,width,height,text,horizon,moon,variant:variant(width,height).id,
-      meteorAt:ambient.meteorAt,particlesAt:ambient.particlesAt,sky,ridge,garden});
+      meteorAt:ambient.meteorAt,twinkleAt:ambient.twinkleAt,particlesAt:ambient.particlesAt,
+      petalsAt:ambient.petalsAt,firefliesAt:ambient.firefliesAt,cloudsAt:clouds?.cloudsAt,lanternsAt:lanterns?.floatingAt,sky,ridge,garden});
   }
   globalThis.PixelScene=Object.freeze({assets,variant,create});
 })();

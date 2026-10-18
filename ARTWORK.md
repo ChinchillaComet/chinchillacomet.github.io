@@ -33,7 +33,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 6 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 7 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -42,8 +42,9 @@ lossy illustration plates, or random surface textures.
 The darker blue and plum dusk palette leaves room for the light sources. Four
 sky swatches meet through ordered dithering. The cool moon disc has a few
 short crater groups and an aura whose native-pixel coverage thins into the
-sky. Complete reviewed frames contain 48 opaque colours, including lighting
-and motion; tests retain that 48-colour ceiling.
+sky. Complete reviewed frames contain 53 opaque colours, including lighting
+and motion. The 56-colour test budget leaves a small margin for the distinct
+lime-gold firefly ramp and warm fire/paper shades.
 
 The cherry canopy is assembled from small authored blossom sprays at 1:1
 resolution. Its finer 1–3 pixel edge steps and connected interior groups avoid
@@ -52,20 +53,30 @@ all the blossoms and partially visible branches. Portrait screens use an
 overhanging bough. Four small hanging tips respond to the same wind as the
 petals; their anchors remain fixed while their end poses move one pixel.
 
-Ground, rear grasses, seated stones, short grass at stone bases, and the
-lantern retain explicit depth order. A small palette-aware lighting pass
-recolours lantern-facing surfaces within a dithered falloff. It advances each
-material along deliberate warm colour ramps, retains opaque pixels and object
-shadows, and varies very slightly with the flame. It does not draw a blurred
-or translucent light image over the scene.
+The slightly wider foreground bank retains explicit depth order: ground,
+rear grasses, seated stones, short grass at stone bases, and a low campfire
+hearth. Crossed logs support six authored flame poses, with up to two small
+embers. A palette-aware lighting pass recolours nearby facing surfaces within
+a dithered falloff. It advances each material along deliberate warm colour
+ramps, retains opaque pixels and object shadows, and flickers with the flame.
+It does not draw a blurred or translucent light image over the scene.
 
 Three mountain layers and a far-shore pavilion give the lake depth. The
 pavilion has a lit window and a short reflection. Moonlight opens toward the
 viewer in asymmetric horizontal pools, broken by dark water and smaller cool
 glints. These planes have fixed native heights, including on portrait screens.
 Three lily-pad groups, an open lotus, and a smaller bud remain in open water.
-Fireflies keep a visible core throughout their pulse and use compact, one- to
-three-cell light shapes.
+Three shore lights sit below the mountains, while three small paper lanterns
+hover at staggered heights above the lake. The airborne lanterns use authored
+9-by-14 and 7-by-10 sprites, with sparse, precomputed native-pixel halos.
+Their broken reflections follow the light centres across the water, mirrored
+about the horizon and gently displaced by the same small ripples.
+
+Fireflies have independent lime-gold light ramps, persistent cores, and compact
+connected glows: three by three pixels, briefly extending to five by three at
+their brightest. Petals remain rose-coloured. Firefly birth positions reserve
+their entire hovering glow footprint around both the heading and hearth;
+the insects keep a stable count instead of disappearing at an exclusion edge.
 
 ## Display grid and type
 
@@ -92,8 +103,12 @@ Python's `fontTools` and run `python assets/fonts/build-welcome-mask.py`.
 
 ## Motion, recovery, and fallback
 
-`src/scene.js` caches static layers. A deterministic shared wind phase drives
-whole-pixel cloud drift, the small hanging canopy tips, and falling petals.
+`src/scene.js` caches static layers. Four padded, connected cloud sprites travel
+right to left in three slow streams, at 0.35–0.57 native pixels per second.
+Seeded variation selects each new shape while it is fully offscreen; every
+departing shape clears the left edge before its lane wraps. There is no
+on-screen replacement or reversal. A deterministic shared wind phase drives
+the small hanging canopy tips and falling petals.
 The scene uses 16 desktop and 12 portrait petal sources. Each one turns through
 eight native poses of one to three pixels, with individual flutter and a shared
 breeze. A protected rectangle keeps the particle shapes away from the heading.
@@ -103,11 +118,16 @@ with the complete background, so motion does not accumulate trails or holes.
 The shooting star has a compact leading wedge, a short two-cell shoulder, and
 a one-cell taper. It travels down-left; earlier head positions form its tail
 up-right. The first pass begins after 7.5 seconds, then repeats every 29 seconds.
+A brief three-cell sparkle with two tiny, staggered satellites appears at the
+endpoint just after the head leaves. The afterglint lasts 0.82 seconds and
+uses the same native grid as the trail. Lanterns sway and bob by only one or
+two pixels; their base flames, the campfire, and firefly glows flicker gently.
 
 The renderer paints synchronously and reveals the canvas only after a complete
 successful frame. It caps animation at 24 FPS, pauses hidden or frozen pages,
-and respects reduced motion. Fireflies remain present in the reduced-motion
-still. A rendering failure restores the static picture and real heading.
+and respects reduced motion. Fireflies, the campfire and lanterns remain
+present as a stable reduced-motion still. A rendering failure restores the
+static picture and real heading.
 
 Startup and recovery listen for DOM readiness, load, page restoration,
 visibility, prerender activation, and freeze/resume events. Recovery clears
@@ -130,8 +150,9 @@ lossless fallback PNGs, and desktop/phone previews. Visitors do not load it.
 pictures, release links, and renderer code synchronized.
 
 Tests cover glyphs, frame coverage, physical pixel alignment, palette limits,
-cloud contours, meteor direction, water motion, firefly visibility, reduced
-motion, lifecycle recovery, and release integrity. See `tests/README.md`.
+cloud contours and offscreen wraps, meteor direction and afterglint, water
+motion, separate particle palettes, full-glow exclusion, reduced motion,
+lifecycle recovery, and release integrity. See `tests/README.md`.
 
 Visual review is a separate gate: inspect native and enlarged desktop, phone,
 tablet, and panoramic compositions, including animation frames. For this
