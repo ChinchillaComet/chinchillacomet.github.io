@@ -34,7 +34,7 @@
       y:height-font.brand.height/2-10,width:font.brand.width/2,height:font.brand.height/2,scale:.5};
     const fire=globalThis.NativeGarden.firePosition(width,height);
     const chinchilla=globalThis.NativeChinchilla?.create(width,height);
-    const waterPlants=globalThis.NativeLandscape.waterPlants?.(width,height,horizon)??[];
+    const waterPlants=globalThis.NativeLandscape.waterPlants?.(width,height,horizon,chinchilla?.bounds)??[];
     const fireflyAnchors=waterPlants.length?Array.from({length:portrait?7:9},(_,index)=>{
       const plant=waterPlants[index%waterPlants.length];
       const dx=index<waterPlants.length?-7:11;
@@ -69,7 +69,7 @@
       lanterns?.drawShore(context,t);
       globalThis.NativeLandscape.lake(context,width,height,horizon,t,moon.x,{plants:false});
       lanterns?.drawReflections(context,t);
-      globalThis.NativeLandscape.lilyPads(context,width,height,horizon,t);
+      globalThis.NativeLandscape.lilyPads(context,width,height,horizon,t,waterPlants);
       lanterns?.drawFloating(context,t);
       context.drawImage(garden,0,0);
       globalThis.NativeGarden.campfire?.(context,width,height,t);

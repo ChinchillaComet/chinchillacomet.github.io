@@ -34,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 10 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 11 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -75,7 +75,10 @@ viewer in asymmetric horizontal pools, broken by dark water and smaller cool
 glints. These planes have fixed native heights, including on portrait screens.
 Five lily-pad groups include two open lotus flowers, two buds, and a leaf-only
 cluster. The smaller distant additions flank the moonlight path. Their positions
-are shared by the artwork and firefly habitat through `waterPlants`. Pad bodies
+are shared by the artwork and firefly habitat through `waterPlants`. The scene
+passes the chinchilla's actual bounds into this layout and reuses the same plant
+list for drawing and firefly anchors. Complete leaf and flower extents, including
+submerged shadows, stay clear of the taller character on narrow phones. Pad bodies
 are painted after lantern reflections so reflected light cannot erase a leaf.
 Three shore lights sit below the mountains, while three small paper lanterns
 hover at staggered heights above the lake. The airborne lanterns use authored
@@ -94,13 +97,15 @@ the lotus and lily pads. The insects keep a stable count instead of disappearing
 at an exclusion edge.
 
 A small chinchilla sits on the enlarged right bank, facing across the lake.
-Its 43 by 34 cell sprite has a broad cheek, a blunt muzzle, a larger rounded
-body, forward-facing ear bowls, a small tucked hand, and a full brush tail
-rooted low behind the rump. Neutral grey fur planes, a small pale cheek patch,
-and restrained folded-leg shading describe its form without a dark neck break
-or an outlined haunch ring. The seated body stays fixed while the upper tail
-tip briefly shifts by one cell through three anchored poses. The bank supports
-its feet, and the complete character
+Its 43 by 42 cell sprite uses a coherent seated pose. The head sits above the
+shoulder, the torso widens toward the low haunch, and a small hand rests against
+the chest. The broad near ear attaches to the rear of the skull; a smaller,
+darker far ear sits partly behind the crown. Neutral grey fur planes join the
+cheek and shoulder without a dark collar or isolated decorative marks. The tail
+emerges behind the lower rump and sweeps back across the bank, leaving open
+space above its curve. Only its tip shifts through three anchored poses; the
+root, body, and feet stay fixed. Both feet retain the established ground
+baseline, and the complete character
 remains above the bottom caption on narrow phone screens.
 
 ## Display grid and type

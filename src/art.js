@@ -634,7 +634,7 @@ globalThis.NativeLandscape = (() => {
     rect(ctx,x+4,y+height,width-7,1,P.near);
     cells(ctx,rows,x,y,{s:P.padShadow,g:P.pad,l:P.padLight});
   }
-  function waterPlants(w,h,horizon){
+  function waterPlants(w,h,horizon,visitorBounds=globalThis.NativeChinchilla?.create(w,h).bounds){
     const depth=h-horizon,portrait=w<=h,smallPortrait=portrait&&w<180;
     const moon=Math.round(w*.78);
     // Broad leaves remain near the viewer. Compact portraits pull the lowest
@@ -652,22 +652,31 @@ globalThis.NativeLandscape = (() => {
       {x:Math.max(24,moon-35),y:horizon+Math.round(depth*(smallPortrait?.22:.29)),kind:3},
       {x:Math.min(w-16,moon+33),y:horizon+Math.round(depth*.22),kind:4}
     ];
-    // Reserve the full visitor silhouette, including the open space around
-    // its muzzle. The satellite leaves need room too, not only their centres.
-    const visitorLeft=w-44,visitorTop=h-54;
-    if(portrait&&groups[0].x+19>=visitorLeft&&groups[0].y+9>=visitorTop) {
-      groups[0].x=Math.min(groups[0].x,visitorLeft-22);
-    }
-    // Short phones place the leaf-only pair farther up the right side of the
-    // reflection. It stays above the animal and clear of the adjacent lotus.
-    if(smallPortrait&&groups[2].y+7>=visitorTop) {
-      groups[2].x=w-20;
-      groups[2].y=groups[1].y-11;
+    // These extents include every leaf, flower and submerged shadow cell.
+    // The visitor supplies its own bounds, so a taller pose needs no duplicate
+    // origin or silhouette dimensions in the water-garden layout.
+    const extents=[[-12,-5,18,9],[-10,-3,8,5],[-9,0,8,5],[-6,-4,14,7],[-5,-4,8,5]];
+    const bounds=group=>{const [left,top,right,bottom]=extents[group.kind];
+      return {x:group.x+left,y:group.y+top,width:right-left+1,height:bottom-top+1};};
+    const overlaps=(a,b)=>a.x<=b.x+b.width+1&&a.x+a.width+1>=b.x
+      &&a.y<=b.y+b.height+1&&a.y+a.height+1>=b.y;
+    if(visitorBounds){
+      const collides=group=>overlaps(bounds(group),visitorBounds);
+      if(portrait&&collides(groups[0]))groups[0].x=Math.min(groups[0].x,visitorBounds.x-22);
+      if(collides(groups[1]))groups[1].y=Math.min(groups[1].y,visitorBounds.y-8);
+      if(collides(groups[2])){
+        if(smallPortrait){groups[2].x=w-20;groups[2].y=groups[1].y-12;}
+        else groups[2].x=Math.min(groups[2].x,visitorBounds.x-11);
+      }
+      if(collides(groups[4]))groups[4].x=Math.min(groups[4].x,visitorBounds.x-11);
+      // A relocated foreground pair keeps its two-cell water gap from the
+      // smaller bud behind it; their attached shadows never merge together.
+      if(smallPortrait&&overlaps(bounds(groups[2]),bounds(groups[4])))
+        groups[4].y=Math.min(groups[4].y,groups[2].y-8);
     }
     return Object.freeze(groups.map(group=>Object.freeze(group)));
   }
-  function lilyPads(ctx,w,h,horizon,time) {
-    const groups=waterPlants(w,h,horizon);
+  function lilyPads(ctx,w,h,horizon,time,groups=waterPlants(w,h,horizon)) {
     const palette={s:P.lotus,l:P.pink,h:P.cream,d:P.lotusShade,g:P.padShadow};
     const phase=Math.floor(Math.max(time,0)*2)%8;
     const sway=[0,0,1,1,0,0,-1,-1];
@@ -1448,45 +1457,56 @@ globalThis.NativeGarden = (() => {
   return Object.freeze({tree,foreground,ground,groundGeometry,wind,campfire,firePosition,palette:P});
 })();
 
-/* A seated chinchilla: one continuous authored fur cel and three tail poses. */
+/* A seated chinchilla in three-quarter profile, looking across the lake.
+ * The eye sits above the shoulder; the broad haunch carries the lower body.
+ * A smaller oblique far ear sits behind the crown. The broad near cup belongs
+ * to the rear of the skull, never to the shoulder. The tail is drawn behind
+ * the body and leaves its lower rear contour before sweeping over the bank. */
 globalThis.NativeChinchilla = (() => {
   'use strict';
-  const palette=Object.freeze({d:'#292e40',s:'#41495c',m:'#657185',b:'#8b95a4',
-    l:'#bbc5d8',h:'#c0cddd',p:'#a36c8d',q:'#755069',e:'#1c1e31',g:'#172b36'});
+  const palette=Object.freeze({d:'#292e40',s:'#41495c',m:'#657185',b:'#8b95a4',l:'#bbc5d8',h:'#c0cddd',p:'#a36c8d',q:'#755069',e:'#1c1e31',g:'#172b36'});
   const bodyRows=Object.freeze([
-  "..................bbb......................",
-  "................bllbbb.....................",
-  "...............blmpppqs....................",
-  "...............bbppppqqs...................",
-  "..........bbb..bbppppqqs...................",
-  "........bbmmmmsbbppppqqs...................",
-  ".......bbpqqqmsmbmpppqqs...................",
-  ".......bbppqqmsmbbqqqqss...................",
-  "........sppqqmsbbsmqqss....................",
-  ".........sqqmsbbbbbsss.....................",
-  ".........bsmsbbbbbbmsssbb..................",
-  "........llbbbbbbbbmmmsbbbbbbs..............",
-  ".......bbbbbbbbbbmmmmmmmbbbbmss............",
-  "......bbbbbbbbbbmmmmmmmmbbbmmmss...........",
-  ".....bbbbbhebbbmmmmmmmmmbbmmmmmsss.........",
-  ".....sbbbbeebbbmmmmmmmmbbmmmmmmmsss........",
-  ".....ebbbbbbbbbmmmmmmmmbmmmmmmmmmss........",
-  ".....sbbbbbbbbbmmmmmmmmmmmmmmmmmmss........",
-  ".....sbbllbbbbbmmmmmmmmmmmmmmmmmmss........",
-  "......sbbllbbbbbmmmmmmmmmmmmmmmmsss........",
-  ".......smblbbbbbmmmmmmmmmmmmmmmmsss........",
-  ".........smmbbbmmmmmmmmmmmmmmmmssss........",
-  "............smmmmmmmmmmmmmmmmmmssss........",
-  ".............sssbbmmmmmmmmmmssssss.........",
-  ".............sbbbbmmmmmmmmmsssssss.........",
-  ".............llbbbmmmmmmmmmsssssss.........",
-  "..............ssbbbmmmmmmmssssssssd........",
-  "...............smmmmmmmmmmsssssssdd........",
-  "...............smmmmmmmmsssssssddd.........",
-  "................smmmmmssssssssddd..........",
-  ".................smsssssssssdddd...........",
-  "................dbbmmsssdddbbmmd...........",
-  "................ddddddd...ddddddd..........",
+  "...........................................",
+  "...........................................",
+  "...........................................",
+  "....................bbbb...................",
+  "..................bllbbbs..................",
+  ".................blbppppqs.................",
+  "............bbb..bbpppppqqs................",
+  "...........bbmms.bbpppppqqs................",
+  "...........bmqms..bbpppqqs.................",
+  "...........smqms..bbqqqqqs.................",
+  "............mbbbbbbbbqqqs..................",
+  "..........mbbbbbbbbbbbms...................",
+  ".........mllbbbbbbbbbbs....................",
+  "........mbbbbbbbbbbbmmmm...................",
+  ".......mbbbbbbbbbbbmmmmm...................",
+  ".......mbbbbbbbbbbbmmmmmm..................",
+  "......mbbbhebbbbbbbmmmmmm..................",
+  ".....mbbbbeebbbbbbmmmmmmm..................",
+  ".....ebbbbbbbbbbbbmmmmmmm..................",
+  ".....mbbbbbbbbbbbbmmmmmmms.................",
+  "......mbbbbbbbbbbmmmmmmmmmmms..............",
+  "......mbblbbbbbbbmmmmmmmmmmmmms............",
+  ".......mbllbbbbbmmmmmmmmmmmmmmms...........",
+  "........mbbbbbbmmmmmmmmmmmmmmmmss..........",
+  "..........mbbbmmmmmmmmmmmmmmmmmmss.........",
+  ".............mmmmmmmmmmmmmmmmmmsss.........",
+  "............mmbbmmmmmmmmmmmmmmmmsss........",
+  "...........smllbmmmmmmmmmmmmmmmmsss........",
+  "..........smmmmmmmmmmmmmmmmmmmmmmsss.......",
+  "..........smmmmmmmmmmmmmmmmmmmmmmsss.......",
+  "..........smmmmmmmmmmmmmmmmmmsssssss.......",
+  "..........smmmmmmmmmmmmmmmmmssssssss.......",
+  "...........smmmmmmmmmmmmmmmsssssssss.......",
+  "............smmmmmmmmmmmmmmssssssss........",
+  ".............smmmmmmmmmmmmsssssssss........",
+  "..............smmmmmmmmmmmssssssdd.........",
+  "...............smmmmmmmssssssssdd..........",
+  ".................smmmssssssssddd...........",
+  "...................ssssssdddddd............",
+  "................bbmmddddddbbmmmd...........",
+  "...............ddddddd...dddddddd..........",
   "..........................................."
 ]);
   const tailFrames=Object.freeze([
@@ -1507,22 +1527,30 @@ globalThis.NativeChinchilla = (() => {
     "...........................................",
     "...........................................",
     "...........................................",
-    ".....................................mmm...",
-    "....................................mmbmm..",
-    "....................................mbbbms.",
-    "...................................mbbbmms.",
-    "...................................mbbbbms.",
-    "..................................mbbbbmms.",
-    "..................................mbbbmms..",
-    ".................................mbbbbms...",
-    "................................mbbbmmms...",
-    "................................mbbbmms....",
-    "...............................mbbbmms.....",
-    "..............................mbbbmms......",
-    ".............................mbbbmms.......",
-    ".............................mbbmms........",
-    ".............................mmsms.........",
-    "..............................sss..........",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "........................................ss.",
+    ".......................................sbbs",
+    ".......................................sbbs",
+    "......................................sbbbs",
+    ".....................................sbbbms",
+    "...................................smbbbms.",
+    ".................................smbbbbbms.",
+    "...............................smbbbbbbmd..",
+    "...............................smmmmmmdd...",
+    "...............................ddddddd.....",
+    "...........................................",
     "...........................................",
     "..........................................."
   ],
@@ -1543,22 +1571,30 @@ globalThis.NativeChinchilla = (() => {
     "...........................................",
     "...........................................",
     "...........................................",
-    "......................................mmm..",
-    ".....................................mmbmm.",
-    ".....................................mbbbms",
-    "....................................mbbbmms",
-    "...................................mbbbbms.",
-    "..................................mbbbbmms.",
-    "..................................mbbbmms..",
-    ".................................mbbbbms...",
-    "................................mbbbmmms...",
-    "................................mbbbmms....",
-    "...............................mbbbmms.....",
-    "..............................mbbbmms......",
-    ".............................mbbbmms.......",
-    ".............................mbbmms........",
-    ".............................mmsms.........",
-    "..............................sss..........",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    ".......................................ss..",
+    "......................................sbbs.",
+    "......................................sbbs.",
+    ".....................................sbbbs.",
+    ".....................................sbbbms",
+    "...................................smbbbms.",
+    ".................................smbbbbbms.",
+    "...............................smbbbbbbmd..",
+    "...............................smmmmmmdd...",
+    "...............................ddddddd.....",
+    "...........................................",
     "...........................................",
     "..........................................."
   ],
@@ -1579,48 +1615,38 @@ globalThis.NativeChinchilla = (() => {
     "...........................................",
     "...........................................",
     "...........................................",
-    "....................................mmm....",
-    "...................................mmbmm...",
-    "...................................mbbbms..",
-    "...................................mbbbmms.",
-    "...................................mbbbbms.",
-    "..................................mbbbbmms.",
-    "..................................mbbbmms..",
-    ".................................mbbbbms...",
-    "................................mbbbmmms...",
-    "................................mbbbmms....",
-    "...............................mbbbmms.....",
-    "..............................mbbbmms......",
-    ".............................mbbbmms.......",
-    ".............................mbbmms........",
-    ".............................mmsms.........",
-    "..............................sss..........",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    ".........................................ss",
+    "........................................sbs",
+    "........................................sbs",
+    ".......................................sbbs",
+    ".....................................sbbbms",
+    "...................................smbbbms.",
+    ".................................smbbbbbms.",
+    "...............................smbbbbbbmd..",
+    "...............................smmmmmmdd...",
+    "...............................ddddddd.....",
+    "...........................................",
     "...........................................",
     "..........................................."
   ]
 ].map(rows=>Object.freeze(rows)));
   const sequence=Object.freeze([1,1,0,2,0,1,0]);
-  function poseAt(time=0){
-    const t=Number.isFinite(time)?Math.max(0,time):0,local=t%15.4;
-    const active=local>=10.1&&local<11.01;
-    return Object.freeze({pose:active?sequence[Math.min(6,Math.floor((local-10.1)/.13))]:0,
-      active,cycle:Math.floor(t/15.4)});
-  }
-  function drawRows(ctx,rows,x,y){
-    for(let yy=0;yy<rows.length;yy++)for(let xx=0;xx<rows[yy].length;xx++){
-      const colour=palette[rows[yy][xx]];if(!colour)continue;
-      ctx.fillStyle=colour;ctx.fillRect(x+xx,y+yy,1,1);
-    }
-  }
-  function create(w,h){
-    const x=w-44,y=h-54,bounds=Object.freeze({x,y,width:43,height:34});
-    function draw(ctx,time=0){
-      ctx.fillStyle=palette.g;ctx.fillRect(x+16,y+33,17,1);
-      drawRows(ctx,tailFrames[poseAt(time).pose],x,y);
-      drawRows(ctx,bodyRows,x,y);
-    }
-    return Object.freeze({draw,poseAt,bounds});
-  }
+  function poseAt(time=0){const t=Number.isFinite(time)?Math.max(0,time):0,local=t%15.4;const active=local>=10.1&&local<11.01;return Object.freeze({pose:active?sequence[Math.min(6,Math.floor((local-10.1)/.13))]:0,active,cycle:Math.floor(t/15.4)});}
+  function drawRows(ctx,rows,x,y){for(let yy=0;yy<rows.length;yy++)for(let xx=0;xx<rows[yy].length;xx++){const colour=palette[rows[yy][xx]];if(!colour)continue;ctx.fillStyle=colour;ctx.fillRect(x+xx,y+yy,1,1);}}
+  function create(w,h){const x=w-44,y=h-62,bounds=Object.freeze({x,y,width:43,height:42});function draw(ctx,time=0){ctx.fillStyle=palette.g;ctx.fillRect(x+15,y+41,18,1);drawRows(ctx,tailFrames[poseAt(time).pose],x,y);drawRows(ctx,bodyRows,x,y);}return Object.freeze({draw,poseAt,bounds});}
   return Object.freeze({create,poseAt,palette,bodyRows,tailFrames});
 })();
 
