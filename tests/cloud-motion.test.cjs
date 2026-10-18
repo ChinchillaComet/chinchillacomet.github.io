@@ -21,6 +21,47 @@ function frame(stream, time) {
   return canvas.getContext('2d').getImageData(0, 0, canvas.width, canvas.height).data;
 }
 
+// Measure the authored cells rather than trusting the stream's reported box.
+// This makes spacing checks sensitive to visible art added at a sprite edge.
+const outlines = new Map();
+function silhouette(cloud) {
+  if (!outlines.has(cloud.name)) {
+    const sprite = sprites[cloud.name];
+    let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+    for (let y = 0; y < sprite.rows.length; y++) {
+      for (let x = 0; x < sprite.rows[y].length; x++) {
+        if (!sprite.palette[sprite.rows[y][x]]) continue;
+        left = Math.min(left, x); right = Math.max(right, x);
+        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      }
+    }
+    outlines.set(cloud.name, { left, right, top, bottom });
+  }
+  const { left, right, top, bottom } = outlines.get(cloud.name);
+  return { left: cloud.x + left, right: cloud.x + right,
+    top: cloud.y + top, bottom: cloud.y + bottom };
+}
+
+function assertSpacing(stream, time) {
+  const boxes = Array.from(stream.cloudsAt(time), silhouette);
+  const visible = boxes.filter(box => box.right >= 0 && box.left < stream.width
+    && box.bottom >= 0 && box.top < stream.height).sort((a, b) => a.left - b.left);
+  for (let i = 1; i < visible.length; i++) {
+    const gap = visible[i].left - visible[i - 1].right - 1;
+    assert.ok(gap >= 20,
+      `${stream.width}x${stream.height} at ${time}s: clouds need clear sky between them (${gap}px)`);
+  }
+  // Normal responsive layouts have enough vertical space for distinct rows.
+  // Check the actual visual centres, including differently-heighted variants.
+  if (stream.height >= 128) for (let i = 0; i < boxes.length; i++) {
+    for (let j = i + 1; j < boxes.length; j++) {
+      const separation = Math.abs((boxes[i].top + boxes[i].bottom
+        - boxes[j].top - boxes[j].bottom) / 2);
+      assert.ok(separation >= 5, 'cloud centres must keep their staggered sky rows');
+    }
+  }
+}
+
 test('cloud variation is reproducible from the seed without depending on frame order', () => {
   for (const [width, height] of layouts) {
     const first = motion.create(width, height, createCanvas, { seed: 71 });
@@ -41,14 +82,14 @@ test('cloud variation is reproducible from the seed without depending on frame o
   }
 });
 
-test('responsive cloud streams move slowly leftward on whole native pixels and clear the heading', () => {
+test('responsive clouds move slowly leftward on whole native pixels and clear the heading', () => {
   for (const [width, height] of layouts) {
     const stream = motion.create(width, height, createCanvas);
     // Irregularly spaced samples exercise many positions and cycles without
     // assuming a particular starting x-coordinate, lane speed, or sprite size.
     for (let time = 0; time < 14400; time += 17) {
       const before = stream.cloudsAt(time), after = stream.cloudsAt(time + 30);
-      assert.equal(before.length, 3, 'the peaceful sky uses three independent streams');
+      assert.equal(before.length, 3, 'the peaceful sky uses three staggered cloud slots');
       for (let index = 0; index < before.length; index++) {
         const a = before[index], b = after[index];
         for (const cloud of [a, b]) {
@@ -71,6 +112,17 @@ test('responsive cloud streams move slowly leftward on whole native pixels and c
   }
 });
 
+test('cloud silhouettes keep a clear gap through long sessions, variants, and resized layouts', () => {
+  const responsive = [...layouts, [160, 284], [185, 350], [256, 144], [720, 225]];
+  for (const [width, height] of responsive) for (const seed of [0, 71, 207, 0xffffffff]) {
+    const stream = motion.create(width, height, createCanvas, { seed });
+    // Two days of irregular samples catch the gradual catch-up seen with
+    // independent speeds; later direct seeks exercise many more variants.
+    for (let time = 0; time < 172800; time += 97.375) assertSpacing(stream, time);
+    for (const time of [604800.125, 31536000.75]) assertSpacing(stream, time);
+  }
+});
+
 test('loop replacements occur fully beyond both viewport edges and all four forms recur', () => {
   assert.deepEqual(Object.keys(sprites).sort(), expectedNames);
   for (const [width, height] of layouts) {
@@ -90,7 +142,10 @@ test('loop replacements occur fully beyond both viewport edges and all four form
           'the incoming sprite must start completely beyond the right edge');
         assert.equal(before.visible, false);
         assert.equal(after.visible, false);
-        const entered = stream.cloudsAt(boundary + 60)[lane];
+        for (const time of [boundary - 1 / 24, boundary + 1 / 24]) {
+          assertSpacing(stream, time);
+        }
+        const entered = stream.cloudsAt(boundary + after.cycleDuration / 4)[lane];
         assert.equal(entered.cycle, after.cycle);
         assert.equal(entered.name, after.name);
         assert.equal(entered.visible, true, 'the replacement must actually enter the sky');

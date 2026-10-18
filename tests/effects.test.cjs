@@ -106,7 +106,7 @@ test('local light exclusions relocate firefly births without changing their numb
   }
 });
 
-test('the production scene keeps complete firefly glows away from Welcome and the campfire', () => {
+test('the production scene keeps complete firefly glows away from both labels and the campfire', () => {
   assert.equal(typeof garden.firePosition, 'function', 'The scene must expose its actual hearth position');
   for (const [width, height] of compositions) {
     const scene = scenes.create(width, height, createCanvas);
@@ -114,6 +114,8 @@ test('the production scene keeps complete firefly glows away from Welcome and th
     const hearth = { x: fire.x - 14, y: fire.y - 29, width: 28, height: 38 };
     const heading = { x: scene.text.x - 6, y: scene.text.y - 6,
       width: scene.text.width + 12, height: scene.text.height + 12 };
+    const caption = { x: scene.brand.x - 3, y: scene.brand.y - 3,
+      width: scene.brand.width + 6, height: scene.brand.height + 6 };
     const expected = width <= height ? 7 : 9;
     for (let frame = 0; frame <= 512; frame++) {
       const flies = scene.firefliesAt(frame / 4);
@@ -121,6 +123,7 @@ test('the production scene keeps complete firefly glows away from Welcome and th
       for (const fly of flies) {
         assert.ok(!intersects(fly.bounds, hearth), 'Green insects must not be confused with orange hearth embers');
         assert.ok(!intersects(fly.bounds, heading), 'The full halo must stay out of the Welcome area');
+        assert.ok(!intersects(fly.bounds, caption), 'The full halo must stay clear of the bottom caption');
         assert.ok(fly.bounds.x >= 0 && fly.bounds.y >= 0
           && fly.bounds.x + fly.bounds.width <= width && fly.bounds.y + fly.bounds.height <= height);
       }

@@ -34,11 +34,10 @@ function assertOpaquePalette(data, label) {
   }
   assert.ok(colors.size <= 56, `${label}: ${colors.size} colors exceeds the 56-color art budget`);
 }
-function assertGlyphs(data, scene) {
-  const title = scene.text;
-  for (let row = 0; row < font.height; row++) {
-    for (let column = 0; column < font.width; column++) {
-      const filled = font.rows[row][column] === '1';
+function assertGlyphs(data, scene, mask = font, title = scene.text) {
+  for (let row = 0; row < mask.height; row++) {
+    for (let column = 0; column < mask.width; column++) {
+      const filled = mask.rows[row][column] === '1';
       for (let y = 0; y < title.scale; y++) {
         for (let x = 0; x < title.scale; x++) {
           const offset = ((title.y + row * title.scale + y) * scene.width
@@ -72,7 +71,7 @@ function connectedFrom(mask, width, height, starts, value) {
   return visited;
 }
 
-test('Welcome retains the exact original font mask and is the only visible document text', () => {
+test('both page labels use exact original font cells and are the only visible document text', () => {
   const mask = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/welcome-mask.json'), 'utf8'));
   assert.equal(font.text, 'Welcome');
   assert.equal(font.width, mask.width);
@@ -81,9 +80,18 @@ test('Welcome retains the exact original font mask and is the only visible docum
   assert.deepEqual(Array.from(font.rows), mask.rows);
   const binary = fs.readFileSync(path.join(ROOT, 'assets/fonts/PressStart2P-Regular.ttf'));
   assert.equal(crypto.createHash('sha256').update(binary).digest('hex'), mask.fontSha256);
+  const brandMask = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/brand-mask.json'), 'utf8'));
+  assert.equal(font.brand.text, 'Chinchilla Comet');
+  assert.equal(brandMask.glyphs.map(glyph => glyph.character).join(''), font.brand.text);
+  assert.equal(brandMask.fontSha256, mask.fontSha256);
+  assert.equal(font.brand.width, brandMask.width);
+  assert.equal(font.brand.height, brandMask.height);
+  assert.deepEqual(Array.from(font.brand.rows), brandMask.rows);
   const body = source('index.html').split('<body>')[1].split('</body>')[0];
-  assert.equal(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, '').trim(), 'Welcome');
+  assert.equal(body.replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, '').trim()
+    .replace(/\s+/g, ' '), 'Welcome Chinchilla Comet');
   assert.match(body, /<h1 class="welcome">Welcome<\/h1>/);
+  assert.match(body, /<p class="brand">Chinchilla Comet<\/p>/);
 });
 
 test('fallback PNGs decode at the native dimensions recorded by the scene', async () => {
@@ -127,10 +135,17 @@ test('responsive still and motion frames cover the display with square pixels an
     assert.equal(title.height, font.height * title.scale);
     assert.ok(Math.abs(title.x + title.width / 2 - grid.w / 2) <= .5);
     assert.ok(Math.abs(title.y + title.height / 2 - grid.h / 2) <= .5);
+    const brand = scene.brand;
+    assert.equal(brand.scale, 1, 'The bottom label uses the smaller native font size');
+    assert.ok(brand.scale < title.scale);
+    assert.ok(brand.x >= 1 && brand.x + brand.width < grid.w);
+    assert.ok(brand.y > grid.h * .85 && brand.y + brand.height <= grid.h - 8);
+    assert.ok(Math.abs(brand.x + brand.width / 2 - grid.w / 2) <= .5);
     for (const [time, options, label] of [[0, { motion: false }, 'still'], [8.3, {}, 'motion']]) {
       const data = render(scene, time, options);
       assertOpaquePalette(data, label);
       assertGlyphs(data, scene);
+      assertGlyphs(data, scene, font.brand, brand);
     }
   });
 });

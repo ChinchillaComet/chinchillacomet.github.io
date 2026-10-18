@@ -1,6 +1,7 @@
 # Welcome page
 
-A static GitHub Pages landing page with one visible word: **Welcome**. GitHub
+A static GitHub Pages landing page with **Welcome** at the centre and the
+smaller **Chinchilla Comet** caption at the bottom. GitHub
 Pages serves the repository root. The published page has no runtime package
 dependencies, analytics, remote fonts, or image-decoding prerequisite for its
 animation.
@@ -33,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 7 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 8 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -68,7 +69,7 @@ glints. These planes have fixed native heights, including on portrait screens.
 Three lily-pad groups, an open lotus, and a smaller bud remain in open water.
 Three shore lights sit below the mountains, while three small paper lanterns
 hover at staggered heights above the lake. The airborne lanterns use authored
-9-by-14 and 7-by-10 sprites, with sparse, precomputed native-pixel halos.
+paper forms in two sizes, with sparse, precomputed native-pixel halos.
 Their broken reflections follow the light centres across the water, mirrored
 about the horizon and gently displaced by the same small ripples.
 
@@ -77,6 +78,13 @@ connected glows: three by three pixels, briefly extending to five by three at
 their brightest. Petals remain rose-coloured. Firefly birth positions reserve
 their entire hovering glow footprint around both the heading and hearth;
 the insects keep a stable count instead of disappearing at an exclusion edge.
+Both page labels have protected space for the complete particle shapes.
+
+A small chinchilla sits on the enlarged right bank, facing across the lake.
+Its rounded ears, soft grey body, little paws and curved fluffy tail are authored
+native-cell sprites. The seated body stays fixed while the tail briefly twitches
+through anchored poses. The bank supports its feet, and the complete character
+remains above the bottom caption on narrow phone screens.
 
 ## Display grid and type
 
@@ -95,18 +103,24 @@ At a device pixel ratio of 1:
 | 2560 × 1080 | 512 × 216 | 5× |
 
 `src/typography.js` retains the exact bitmap geometry of Press Start 2P by Cody
-Boisclair. The font, attribution, and SIL Open Font License remain in
+Boisclair for both labels. Welcome uses a two-cell enlargement; the smaller
+bottom caption uses the font's original native cells. The font, attribution,
+and SIL Open Font License remain in
 `assets/fonts/`. A real document `<h1>` is available to assistive technology
-and supplies the heading when JavaScript or canvas is unavailable. Scenery
-fallback pictures contain no lettering. To regenerate the font mask, install
-Python's `fontTools` and run `python assets/fonts/build-welcome-mask.py`.
+and supplies the heading when JavaScript or canvas is unavailable. The bottom
+caption has its own real document paragraph. Scenery fallback pictures contain
+no lettering. To regenerate both masks, install Python's `fontTools` and run
+`npm run build:type`. This extracts glyphs from the bundled font and writes only
+the editable typography and new brand mask; the legacy Welcome files stay frozen.
 
 ## Motion, recovery, and fallback
 
 `src/scene.js` caches static layers. Four padded, connected cloud sprites travel
-right to left in three slow streams, at 0.35–0.57 native pixels per second.
+right to left at a shared slow speed. Three separated slots reserve room for
+the widest possible cloud plus an open gap, so later shapes cannot catch up
+or crowd together. Their staggered heights also survive responsive layouts.
 Seeded variation selects each new shape while it is fully offscreen; every
-departing shape clears the left edge before its lane wraps. There is no
+departing shape clears the left edge before its slot wraps. There is no
 on-screen replacement or reversal. A deterministic shared wind phase drives
 the small hanging canopy tips and falling petals.
 The scene uses 16 desktop and 12 portrait petal sources. Each one turns through
@@ -120,13 +134,15 @@ a one-cell taper. It travels down-left; earlier head positions form its tail
 up-right. The first pass begins after 7.5 seconds, then repeats every 29 seconds.
 A brief three-cell sparkle with two tiny, staggered satellites appears at the
 endpoint just after the head leaves. The afterglint lasts 0.82 seconds and
-uses the same native grid as the trail. Lanterns sway and bob by only one or
-two pixels; their base flames, the campfire, and firefly glows flicker gently.
+uses the same native grid as the trail. Lanterns slowly bob up and down through
+their own phases, with their full movement envelope reserved around the heading.
+Their base flames, the campfire, and firefly glows flicker gently.
 
 The renderer paints synchronously and reveals the canvas only after a complete
 successful frame. It caps animation at 24 FPS, pauses hidden or frozen pages,
 and respects reduced motion. Fireflies, the campfire and lanterns remain
-present as a stable reduced-motion still. A rendering failure restores the
+present as a stable reduced-motion still, with the chinchilla's tail at rest.
+A rendering failure restores the
 static picture and real heading.
 
 Startup and recovery listen for DOM readiness, load, page restoration,

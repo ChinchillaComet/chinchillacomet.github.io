@@ -191,7 +191,9 @@
     // Keep the full glow and two-cell hover envelope away from the title and
     // local lights. Resolve these zones once at birth, rather than making a fly
     // vanish whenever its current pose happens to cross an exclusion edge.
-    const flyExclusions = [options.exclude, ...(options.fireflyExclude ?? [])]
+    const particleExclusions = [options.exclude, ...(options.excludes ?? [])]
+      .filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite));
+    const flyExclusions = [...particleExclusions, ...(options.fireflyExclude ?? [])]
       .filter(box => box && [box.x, box.y, box.width, box.height].every(Number.isFinite))
       .map(box => ({ left: Math.floor(box.x) - 4, right: Math.ceil(box.x + box.width) + 4,
         top: Math.floor(box.y) - 3, bottom: Math.ceil(box.y + box.height) + 3 }));
@@ -227,9 +229,8 @@
       return anchor && { ...anchor, phase: i * 1.7, cycle: 6 + (i%3)*.7, glint: i % 4 };
     }).filter(Boolean);
     const excluded = (x, y, radius = 1) => {
-      const box = options.exclude;
-      return box && x + radius >= box.x && x - radius <= box.x + box.width
-        && y + radius >= box.y && y - radius <= box.y + box.height;
+      return particleExclusions.some(box => x + radius >= box.x && x - radius <= box.x + box.width
+        && y + radius >= box.y && y - radius <= box.y + box.height);
     };
     // Separate samplers make each system independent: fireflies hover in their
     // habitat and pulse at their own rates; only petals follow the falling wind.
