@@ -34,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 11 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 12 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -78,7 +78,10 @@ cluster. The smaller distant additions flank the moonlight path. Their positions
 are shared by the artwork and firefly habitat through `waterPlants`. The scene
 passes the chinchilla's actual bounds into this layout and reuses the same plant
 list for drawing and firefly anchors. Complete leaf and flower extents, including
-submerged shadows, stay clear of the taller character on narrow phones. Pad bodies
+submerged shadows, stay clear of the character's complete motion envelope on
+narrow phones. Displaced groups move to the nearest clear water above or beside
+their original position, checking both shoreline contours and other plants.
+Pad bodies
 are painted after lantern reflections so reflected light cannot erase a leaf.
 Three shore lights sit below the mountains, while three small paper lanterns
 hover at staggered heights above the lake. The airborne lanterns use authored
@@ -95,18 +98,45 @@ their entire hovering glow footprint around both labels, the hearth, and the
 chinchilla. Seven portrait or nine landscape fireflies hover above and beside
 the lotus and lily pads. The insects keep a stable count instead of disappearing
 at an exclusion edge.
+All firefly halos are painted before their bright cores, so two nearby glows
+cannot erase either insect's centre after the water garden is recomposed.
 
-A small chinchilla sits on the enlarged right bank, facing across the lake.
-Its 43 by 42 cell sprite uses a coherent seated pose. The head sits above the
-shoulder, the torso widens toward the low haunch, and a small hand rests against
-the chest. The broad near ear attaches to the rear of the skull; a smaller,
-darker far ear sits partly behind the crown. Neutral grey fur planes join the
-cheek and shoulder without a dark collar or isolated decorative marks. The tail
-emerges behind the lower rump and sweeps back across the bank, leaving open
-space above its curve. Only its tip shifts through three anchored poses; the
-root, body, and feet stay fixed. Both feet retain the established ground
-baseline, and the complete character
-remains above the bottom caption on narrow phone screens.
+A small chinchilla sits on a wider right-bank shelf, facing across the lake.
+The character and all its tail poses fit a 60 by 48 cell envelope. Its assembly
+was redrawn using the seated Mitzi photograph from
+[Lee Richardson Zoo](https://www.leerichardsonzoo.org/chinchilla), with
+[Zoo New England's photographs](https://www.zoonewengland.org/stone-zoo/animals/mammals/rodent/long-tailed-chinchilla/)
+for the tail base and coarse brush. These are observation references for an
+original sprite; no zoo photograph is included in the site.
+
+The head is supported above the chest, with a broad cheek and blunt muzzle.
+The near ear has an asymmetric cup: the dark canal is toward the muzzle at its
+lower-left base, and the rear rim catches the moonlight. The far ear mainly
+shows the grey back of its pinna, partly hidden by the crown. Two short arms
+end in separate small hands. A visible near elbow and wrist distinguish the
+forearm from the paler chest. The rounded haunch has an open folded-leg plane
+leading through the hock into a long forward foot; the far foot remains visible.
+A pale belly is countershading in the coat, with a tapered light plane and
+occlusion beneath the chin and arms. Grey planes continue from the shoulder
+into the flank and upper haunch under one cool upper-left light direction.
+
+The tail attaches behind the lower rump, above the heels, with its first cells
+hidden by the body. A narrow root opens into a broader coarse brush. Seven
+authored silhouettes change the proximal angle, middle curve, and terminal
+brush, with follow-through and a smaller settling flick. Only the tucked
+attachment stays fixed; the tail's full volume moves without resampling or
+clipping. The motion is an authored interpretation of a twitch, rather than
+a traced biological motion study. The body and both feet stay planted. The
+bank supplies continuous soil and a grass margin beneath both complete soles
+and their contact shadow. The character remains clear of the bottom caption.
+
+`artwork/chinchilla-v12.json` retains the authored body layers, their draw order,
+seven complete tail cels, palette, anatomy anchors, and timing. The rendered
+body and cels in `src/art.js` are the production artwork. This layer checkpoint
+keeps later adjustments to the ears or limbs separable and reviewable. The
+versioned GIF in `assets/reviews/` is a close-up of the same body and tail at
+4× integer enlargement. It shortens only the idle intervals for review; the
+page uses a 1.22-second twitch after 10.1 seconds in each 16.8-second cycle.
 
 ## Display grid and type
 

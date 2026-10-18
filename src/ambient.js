@@ -283,7 +283,8 @@
     }
     function drawFireflies(context, time, colors = particleColors) {
       const halo = colors.fireflyHalo ?? particleColors.fireflyHalo;
-      for (const fly of firefliesAt(time)) {
+      const flies=firefliesAt(time);
+      for (const fly of flies) {
         const { x, y, level } = fly;
         if (level >= 1) {
           // A softly stepped 3×3 cluster, wholly opaque and on the same grid as
@@ -305,8 +306,10 @@
           pixel(context, x - 2, y, halo[0]);
           pixel(context, x + 2, y, halo[0]);
         }
-        pixel(context, x, y, colors.firefly[level]);
       }
+      // The water garden can bring two hovering glows close together. Paint
+      // every halo first so its dim edge cannot erase another insect's core.
+      for(const {x,y,level} of flies)pixel(context,x,y,colors.firefly[level]);
     }
     function drawParticles(context,time,colors=particleColors){drawPetals(context,time,colors);drawFireflies(context,time,colors);}
     return Object.freeze({
