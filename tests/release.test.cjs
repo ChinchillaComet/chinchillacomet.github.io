@@ -195,3 +195,20 @@ test('previously published v8 resource URLs retain their exact bytes for cached 
     assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
   }
 });
+
+const frozenV9 = {
+  "assets/releases/welcome.75751f1299b8.js": "75751f1299b8085165863fbbd38c8027435a687330a408d41b16fac7001f298a",
+  "assets/releases/welcome.702adb74aeb5.css": "702adb74aeb56b1b00589ed90be15c276d1a5e818dcdbc45cf02690cb725caa6",
+  "assets/releases/still-landscape.4425e7397d3c.png": "4425e7397d3c89edcc4634c49eddbd795d0b4b579540099ff5744d86de233f62",
+  "assets/releases/still-portrait.96674352aa85.png": "96674352aa856f7044f6e648831ba2056da9c8c2641105f0609200df6d641bbb",
+  "assets/releases/still-panorama.ca5147222e31.png": "ca5147222e318252d8f935b47ef9b8d760d68b362a76192836ccfe4f36a03f63",
+  "assets/releases/preview-desktop.4315b811ddc3.png": "4315b811ddc3c5236542701b9cb26a80f744d23978be6fe105a2bc7a45ffe849",
+  "assets/releases/preview-phone.72ca80e7b937.png": "72ca80e7b937ca3a9f5f3db3956c60e69c62772cac9b19a99119778a40781731"
+};
+
+test('previously published v9 resource URLs retain their exact bytes for cached documents', () => {
+  for (const [relative, digest] of Object.entries(frozenV9)) {
+    const bytes = fs.readFileSync(path.join(ROOT, relative));
+    assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
+  }
+});

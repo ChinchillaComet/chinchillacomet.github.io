@@ -50,7 +50,7 @@
       fireflyAnchors,fireflyRegion:[.58,.72,.88,.9],fireflyCount:portrait?7:9,
       fireflyExclude:[{x:fire.x-14,y:fire.y-29,width:28,height:38},chinchilla?.bounds],
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12},
-      excludes:[{x:brand.x-3,y:brand.y-3,width:brand.width+6,height:brand.height+6}],
+      excludes:[{x:brand.x-3,y:brand.y-3,width:brand.width+6,height:brand.height+6},chinchilla?.bounds],
     });
     const lanterns=globalThis.NativeLanterns?.create(width,height,horizon,{
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12}

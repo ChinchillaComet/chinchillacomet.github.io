@@ -1,4 +1,5 @@
-/* Native pixel scenery. All artwork is authored directly on the scene grid. */
+/* Native artwork: authored opaque cells on one logical pixel grid. */
+
 globalThis.NativeSky = (() => {
   'use strict';
   const P=Object.freeze({deep:'#191c36',mid:'#292a44',sky:'#3e3755',haze:'#594563',
@@ -66,9 +67,6 @@ globalThis.NativeSky = (() => {
   return Object.freeze({draw,sky,moon,stars,palette:P});
 })();
 
-/* Four authored cloud sprites on one native pixel grid. The existing broad and
- * small forms are joined by a low wispy bank and a taller three-lobed puff.
- * Two transparent border cells keep every silhouette intact during clipping. */
 globalThis.NativeClouds = Object.freeze({
   "wide": {
     "rows": [
@@ -418,49 +416,84 @@ globalThis.NativeLandscape = (() => {
     rect(ctx,x-1,y-6,1,2,P.cream);
     rect(ctx,x-2,y-3,3,1,P.near);
   }
-  // Three authored cedar profiles, with unequal branch skirts and long tips.
-  // Their connected shelves leave small negative spaces between boughs instead
-  // of filling the grove with repeated triangular stamps or isolated noise.
+  // Five small, hand-drawn cedar crowns. Each scanline is a connected native
+  // pixel run; unequal bough shelves and narrow necks keep the forest from
+  // reading as a row of repeated triangles. None of these profiles is scaled.
   const cedars=Object.freeze([
-    [[0,1],[0,1],[-1,2],[-1,2],[-2,3],[-1,2],[-2,3],[-3,4],
-      [-2,3],[-3,4],[-4,4],[-3,3],[-3,4],[-4,5],[-5,5],[-4,4],
-      [-4,5],[-5,6],[-6,6],[-5,5],[-4,5],[-3,4],[-1,2]],
-    [[0,1],[0,1],[-1,2],[-2,2],[-1,2],[-2,3],[-3,3],[-2,2],
-      [-2,3],[-3,4],[-4,4],[-3,3],[-3,4],[-4,5],[-5,5],[-4,4],[-2,3],[-1,2]],
-    [[0,1],[-1,1],[-1,2],[-2,3],[-1,2],[-2,3],[-3,3],[-2,2],
-      [-3,4],[-4,4],[-3,3],[-2,3],[-1,2]]
+    [[0,1],[0,1],[-1,2],[-1,2],[-2,3],[-1,2],[-2,3],
+      [-3,3],[-2,2],[-2,3],[-3,4],[-2,3],[-1,2],[-1,2]],
+    [[0,1],[-1,1],[-1,2],[-2,3],[-1,2],[-2,3],[-3,3],
+      [-2,2],[-3,4],[-4,4],[-3,3],[-2,3],[-1,2]],
+    [[0,1],[0,1],[-1,2],[0,2],[-1,3],[-2,3],[-1,2],
+      [-2,3],[-3,4],[-2,3],[-1,2]],
+    [[0,1],[0,1],[-1,2],[-1,2],[-2,3],[-1,2],[-2,3],
+      [-1,2],[-1,1]],
+    [[0,1],[0,1],[-1,2],[-2,2],[-1,2],[-2,3],[-3,3],
+      [-2,3],[-3,4],[-2,3],[-3,4],[-4,5],[-3,4],
+      [-3,3],[-2,3],[-1,2]]
   ]);
-  function cedar(ctx,x,base,kind,colour,lit=false,lean=0){
+  function cedar(ctx,x,base,kind,colour,lit=false,mirror=false){
     const rows=cedars[kind],top=base-rows.length;
     for(let row=0;row<rows.length;row++){
-      const [left,right]=rows[row],bend=lean&&row<Math.floor(rows.length*.45)?lean:0;
-      rect(ctx,x+left+bend,top+row,right-left,1,colour);
-    }
-    rect(ctx,x,base-3,1,5,colour);
-    // A few attached, continuous upper bough faces carry cool reflected light.
-    // Each accent sits inside a shelf, with the darker underside left visible.
-    if(lit)for(const row of[kind===0?7:5,kind===0?13:9]){
       const [left,right]=rows[row];
-      rect(ctx,x+Math.max(0,left),top+row,Math.max(1,right-1),1,P.waterGlow);
+      rect(ctx,x+(mirror?1-right:left),top+row,right-left,1,colour);
+    }
+    rect(ctx,x,base-2,1,4,colour);
+    if(lit){
+      // The lit face is attached to the upper surface of two right boughs.
+      // A continuous shadow shelf remains beneath each very short accent.
+      for(const row of [Math.floor(rows.length*.43),Math.floor(rows.length*.70)]){
+        const [left,right]=rows[row],length=Math.max(1,(mirror?-left:right-1));
+        rect(ctx,x,top+row,length,1,P.waterGlow);
+      }
     }
   }
   function forest(ctx,w,horizon){
-    const edge=Math.floor(w*.31),farForms=[0,1,0,2,1,0,1,2];
-    // Overlapping crowns recede into a bluer back row. Native tree sizes stay
-    // constant across layouts; only the length of the grove changes.
-    for(let x=-3,index=0;x<edge-5;x+=11,index++){
-      const kind=farForms[index%farForms.length];
-      cedar(ctx,x,horizon-4-(index%3===1?2:0),kind,P.middleShade,false,index%4===1?1:0);
+    const edge=Math.floor(w*.32);
+    // The back belt is deliberately the darkest, as a sheltered forest behind
+    // the moon-facing boughs. Its tightly spaced crowns and high understorey
+    // make a continuous wooded slope, rather than isolated trees on a line.
+    const backForms=[2,3,1,3,2,1,3,2,3,1,2];
+    const backSteps=[5,6,5,7,5,6,6,5,7,5,6];
+    const backLevels=[0,1,0,-1,-1,0,1,0,-1,0,0];
+    for(let x=-2,index=0;x<edge-2;x+=backSteps[index++%backSteps.length]){
+      const phase=index%backForms.length;
+      cedar(ctx,x,horizon-8+backLevels[phase],backForms[phase],P.near,false,index%3===1);
     }
-    const frontForms=[1,2,0,1,2,1,0,2];
-    for(let x=2,index=0;x<edge-7;x+=14,index++){
+    poly(ctx,[[0,horizon-10],[Math.round(edge*.18),horizon-10],
+      [Math.round(edge*.35),horizon-9],[Math.round(edge*.57),horizon-9],
+      [Math.round(edge*.76),horizon-7],[edge-7,horizon-6],
+      [edge,horizon-3],[edge,horizon+1],[0,horizon+1]],P.near);
+
+    // A quieter blue middle layer makes the dark tips behind it readable.
+    // Irregularly spaced groups leave narrow views into the rear belt; their
+    // lower boughs overlap in depth instead of producing touching identical tips.
+    const middleForms=[0,2,1,3,4,2,0,1,3,2,1];
+    const middleSteps=[8,7,9,6,8,9,7,8,6,9,8];
+    const middleLevels=[0,-1,0,1,0,-1,0,0,1,0,-1];
+    for(let x=1,index=0;x<edge-7;x+=middleSteps[index++%middleSteps.length]){
+      const phase=index%middleForms.length;
+      cedar(ctx,x,horizon-4+middleLevels[phase],middleForms[phase],P.waterGlow,false,index%4===2);
+    }
+    poly(ctx,[[0,horizon-6],[Math.round(edge*.23),horizon-6],
+      [Math.round(edge*.46),horizon-5],[Math.round(edge*.72),horizon-4],
+      [edge-10,horizon-3],[edge-3,horizon-1],
+      [edge-3,horizon+1],[0,horizon+1]],P.waterGlow);
+
+    // The smallest near crowns step down toward the water at the right edge.
+    // Sparse attached highlights describe whole branch faces, without stipple.
+    const frontForms=[1,3,2,0,2,1,3,0,2,3];
+    const frontSteps=[11,9,10,12,9,11,10,9,12,10];
+    for(let x=-3,index=0;x<edge-13;x+=frontSteps[index++%frontSteps.length]){
       const kind=frontForms[index%frontForms.length];
-      cedar(ctx,x,horizon-1+(index%3===0?1:0),kind,P.padShadow,index%2===0,index%4===3?-1:0);
+      cedar(ctx,x,horizon-1+(index%3===1?1:0),kind,P.padShadow,index%3===1,index%4===1);
     }
-    // The low continuous understorey joins the trunks to the dark lakeshore.
-    poly(ctx,[[0,horizon-5],[Math.round(edge*.23),horizon-5],
-      [Math.round(edge*.38),horizon-4],[Math.round(edge*.66),horizon-4],
-      [edge-6,horizon-2],[edge,horizon-1],[edge,horizon+1],[0,horizon+1]],P.padShadow);
+    cedar(ctx,edge-11,horizon-1,3,P.padShadow,false,true);
+    // Joined root masses disappear behind the existing wooded shoreline.
+    poly(ctx,[[0,horizon-4],[Math.round(edge*.27),horizon-4],
+      [Math.round(edge*.52),horizon-3],[Math.round(edge*.74),horizon-3],
+      [edge-12,horizon-2],[edge-5,horizon-1],[edge,horizon],
+      [edge,horizon+1],[0,horizon+1]],P.padShadow);
   }
   function mountain(ctx, w, horizon) {
     const x = Math.round(w / 2);
@@ -619,6 +652,18 @@ globalThis.NativeLandscape = (() => {
       {x:Math.max(24,moon-35),y:horizon+Math.round(depth*(smallPortrait?.22:.29)),kind:3},
       {x:Math.min(w-16,moon+33),y:horizon+Math.round(depth*.22),kind:4}
     ];
+    // Reserve the full visitor silhouette, including the open space around
+    // its muzzle. The satellite leaves need room too, not only their centres.
+    const visitorLeft=w-44,visitorTop=h-54;
+    if(portrait&&groups[0].x+19>=visitorLeft&&groups[0].y+9>=visitorTop) {
+      groups[0].x=Math.min(groups[0].x,visitorLeft-22);
+    }
+    // Short phones place the leaf-only pair farther up the right side of the
+    // reflection. It stays above the animal and clear of the adjacent lotus.
+    if(smallPortrait&&groups[2].y+7>=visitorTop) {
+      groups[2].x=w-20;
+      groups[2].y=groups[1].y-11;
+    }
     return Object.freeze(groups.map(group=>Object.freeze(group)));
   }
   function lilyPads(ctx,w,h,horizon,time) {
@@ -1143,11 +1188,64 @@ globalThis.NativeGarden = (() => {
     } else if(kind===1) {
       poly(c,[[x-r+4,y-6],[x-6,y-10],[x-2,y-10],[x-8,y-5],[x-r+3,y-2]],P.stoneWarm);
     }
-    // Only low two-pixel occluding blades cross the rock's seated bottom edge.
-    tuft(c,x-r+7,y+7,2,P.grass);
+    // A broken turf seam covers the bottom plane. The rock is embedded in the
+    // bank instead of ending in a dark outline suspended above the water.
+    poly(c,[[x-r+1,y+5],[x-r+5,y+4],[x-r+9,y+5],[x-5,y+5],
+      [x-3,y+6],[x+5,y+6],[x+8,y+5],[x+r-4,y+4],[x+r-2,y+5],
+      [x+r-5,y+7],[x-r+1,y+7]],P.grassDark);
+    rect(c,x-r+5,y+5,4,1,P.grass);
+    rect(c,x+r-7,y+5,3,1,P.grass);
+    tuft(c,x-r+8,y+7,3,P.grass);
     if(kind!==2)tuft(c,x+7,y+7,2,P.grass);
   }
   const groundLevel=h=>Math.round(h*.80);
+  function groundGeometry(w,h) {
+    const bank=groundLevel(h);
+    // One monotonic shoreline continues to the actual bottom of the viewport.
+    // The old polygon turned back through vertices below short canvases; rocks
+    // also had fixed x positions unrelated to its visible edge.
+    const profile=[[-5,13],[-3,25],[-2,40],[0,54],[4,66],[10,77],
+      [18,88],[28,99],[39,108],[53,116],[69,126],[86,140],[104,152]];
+    function nativeEdge(y) {
+      const offset=y-bank;
+      if(offset<profile[0][0])return 0;
+      for(let i=1;i<profile.length;i++) {
+        const [a,x]=profile[i-1],[b,next]=profile[i];
+        if(offset<=b)return x+(next-x)*(offset-a)/(b-a);
+      }
+      return profile.at(-1)[1]+(offset-profile.at(-1)[0])*.6;
+    }
+    const rawEnd=nativeEdge(h),limit=Math.min(w-12,Math.round(w*(w<=h?.72:.46)));
+    // Preserve the room beside the hearth on narrow tall screens. Only the
+    // lower curve contracts; squeezing the whole bank would push its rear
+    // boulder into the fire ring.
+    const hinge=Math.min(88,limit-1);
+    const squeeze=Math.min(1,(limit-hinge)/Math.max(1,rawEnd-hinge));
+    function edgeAt(y) {
+      if(y<bank-5)return 0;
+      const edge=nativeEdge(y);
+      return Math.max(0,Math.min(w,Math.floor(edge<=hinge?edge:hinge+(edge-hinge)*squeeze)));
+    }
+    const rocks=[];
+    const secondY=Math.min(bank+35,h-8);
+    for(const [kind,y,preferredX]of [[0,bank+16,68],[1,secondY,94],[2,bank+61,112]]) {
+      if(y+7>=h || (kind===2&&y+10>=h))continue;
+      const radius=[16,19,15][kind];
+      // Reserve a grass margin outside the entire contact shadow, not just its
+      // centre. The widest shadow cell is three cells beyond the rock radius.
+      const x=Math.min(preferredX,edgeAt(y+2)-radius-6);
+      rocks.push(Object.freeze({x,y,kind,radius}));
+    }
+    return Object.freeze({bank,edgeAt,rocks:Object.freeze(rocks)});
+  }
+  function ground(c,w,h,geometry=groundGeometry(w,h)) {
+    const {bank,edgeAt}=geometry;
+    for(let y=bank-5;y<h;y++) {
+      const edge=edgeAt(y),inner=edgeAt(y-6);
+      rect(c,0,y,edge,1,P.grassDark);
+      if(edge>inner)rect(c,inner,y,edge-inner,1,P.grass);
+    }
+  }
   function firePosition(w,h) { return {x:38,y:groundLevel(h)+12}; }
   // Six authored flame poses share the same base. Each mark is one scene pixel;
   // the fire curls slowly between connected silhouettes rather than scaling.
@@ -1311,26 +1409,22 @@ globalThis.NativeGarden = (() => {
     if(second<.25)rect(c,x-4-Math.round(second*5),y-15-Math.round(second*28),1,1,P.fire);
   }
   function foreground(c,w,h) {
-    const portrait=w<=h, bank=groundLevel(h);
-    const reach=Math.min(w-12,Math.round(w*(portrait?.72:.46)));
-    // 1. Solid bank and its receding lip. Every later object has ground beneath it.
-    poly(c,[[0,bank-5],[13,bank-5],[25,bank-3],[40,bank-2],[54,bank],
-      [67,bank+4],[78,bank+9],[89,bank+16],[102,bank+25],[113,bank+38],
-      [124,bank+53],[reach,h],[0,h]],P.grassDark);
-    poly(c,[[0,bank-5],[13,bank-5],[25,bank-3],[40,bank-2],[54,bank],
-      [67,bank+4],[78,bank+9],[89,bank+16],[102,bank+25],[113,bank+38],
-      [108,bank+37],[96,bank+29],[85,bank+24],[76,bank+17],[65,bank+12],
-      [53,bank+7],[39,bank+5],[27,bank+3],[14,bank+2],[0,bank+3]],P.grass);
+    const geometry=groundGeometry(w,h),{bank,edgeAt,rocks}=geometry;
+    // 1. A continuous soil mass and one connected grass lip share the same edge
+    // used to place every boulder and plant. No prop creates its own land patch.
+    ground(c,w,h,geometry);
     // 2. Ground remains in its unlit material colours. The hearth contains its
     // own small charred centre, and the animated light draws the surrounding pool.
     // 3. Tall plants behind the stones. Stone faces will occlude them next.
-    for(const [x,dy,height]of [[6,-4,5],[25,-1,3],[66,6,5],[86,20,5],[116,43,5]])
-      tuft(c,x,bank+dy,height,x<65?P.grassLight:P.grass);
+    for(const [desiredX,dy,height]of [[6,-4,5],[25,-1,3],[66,6,5],[86,20,5],[116,43,5]]) {
+      const y=bank+dy,x=Math.min(desiredX,edgeAt(y)-6);
+      if(y<h&&x>4)tuft(c,x,y,height,x<65?P.grassLight:P.grass);
+    }
     // 4. Stones are ordered from the rear lip toward the viewer.
-    stone(c,74,bank+12,0);stone(c,98,bank+30,1);stone(c,116,bank+61,2);
+    for(const rock of rocks)stone(c,rock.x,rock.y,rock.kind);
     // 5. Short foreground plants only touch open ground or stone bases.
     for(const [x,dy,height]of [[7,14,4],[20,25,3],[53,30,3],[75,42,3],[108,62,3]])
-      if(bank+dy<h)tuft(c,x,bank+dy,height,x<48?P.grassLight:P.grass);
+      if(bank+dy<h&&x+4<edgeAt(bank+dy))tuft(c,x,bank+dy,height,x<48?P.grassLight:P.grass);
     for(const [x,dy,lit]of [[10,26,false],[32,36,true],[7,51,false],[58,49,false]])
       if(bank+dy<h-1)flower(c,x,bank+dy,lit);
     // Fallen petals sit flat on the bank instead of appearing to grow from rocks.
@@ -1351,137 +1445,183 @@ globalThis.NativeGarden = (() => {
     tuft(c,w-8,h-20,3,P.grassLight);
     tuft(c,w-4,h-8,4,P.grass);
   }
-  return Object.freeze({tree,foreground,wind,campfire,firePosition,palette:P});
+  return Object.freeze({tree,foreground,ground,groundGeometry,wind,campfire,firePosition,palette:P});
 })();
 
-/* A seated chinchilla built from separate head, torso, haunch and brush-tail cels.
- * Anatomy reference: Maryland Zoo and San Diego Zoo chinchilla photographs.
- * Every painted cell is one native scene pixel; no image plate or rescaling. */
+/* A seated chinchilla: one continuous authored fur cel and three tail poses. */
 globalThis.NativeChinchilla = (() => {
   'use strict';
-  const palette=Object.freeze({
-    d:'#292e40',s:'#41495c',m:'#657185',b:'#728fa9',l:'#bbc5d8',
-    h:'#c0cddd',p:'#a36c8d',q:'#755069',e:'#1c1e31',g:'#172b36'
-  });
-  // The torso is the dominant mass, with a large rounded rump and a separate
-  // curved haunch plane. A narrow pale chest meets the two little forepaws.
-  const torsoRows=Object.freeze([
-    '........ddddd........',
-    '......dmmbbmmdd......',
-    '.....dmmbbblmmdd.....',
-    '....dmmbbbmmmmmmdd...',
-    '...dmmbbbmmmmmmmmsd..',
-    '..dmmbbbmmmmmmmmssmd.',
-    '..dmbbbmmmmmmmmmssmd.',
-    '..dmbbmmmmmmmmmmssmd.',
-    '..dmhlmmmmmmmmmmssmd.',
-    '.dmhhlmmmmmmmmmmssmd.',
-    '.dmhhlmmmmmmmmmmssmd.',
-    '.dmhhlmmmmmssssmmssd.',
-    '.dmhhlmmmmmsbbbmmssd.',
-    '.dmhhlmmmmsbbbbmmssd.',
-    '..dmhlmmmsbbbbbmmssd.',
-    '..dmhlmmmsbbbbmmmssd.',
-    '...dmlmmmsbbbmmmssmd.',
-    '....dmmmmmsmmmmssmd..',
-    '.....dmsmmmssssssmd..',
-    '......dssssssssmd....',
-    '....dmlddddddbmmmd...',
-    '....dddd....ddddd....',
-  ]);
-  // Near ear tilts toward the muzzle: broad pink inner bowl on its left side,
-  // grey folded rim at the rear. The smaller far ear is partly hidden behind it.
-  // The short head ends above the chest rather than continuing into one tall blob.
-  const headRows=Object.freeze([
-    '.......ddd..........',
-    '......dblld.........',
-    '.....dblppmd.ddd....',
-    '.....dblpppmdmbmmd..',
-    '.....dbppqpmdbqpmd..',
-    '......dbpqpmdmqpmd..',
-    '......dbbqmmdmmmd...',
-    '.......dbmmdmmmd....',
-    '......dbbllbbmmd....',
-    '.....dbbllbbbbmmd...',
-    '....dbbllbbbbbmmmd..',
-    '...dbblbbbbbbbmmmd..',
-    '...dbllbbbbbbbmmmd..',
-    '..dhhhlbbbbbbbmmmd..',
-    '..edhhhbbbbbbbmmmd..',
-    '...dhhhbbbbbbbmmmd..',
-    '...dbllbbbbbbbmmd...',
-    '....dbllbbbbbmmd....',
-    '.....dsblbbbmmdd....',
-    '......dssmmmdd......',
-    '........dddd........',
-  ]);
-  // The furred brush sweeps outward from the low rump, then curls inward at its
-  // blunt tip. A dark separation from the haunch preserves the bow's silhouette;
-  // wide middle-value clusters describe fur rather than a thin highlighted tube.
-  const tailRows=Object.freeze([
-    '.....dmmbd....',
-    '....dbbmmmd...',
-    '.....dbbmmmmd.',
-    '.......dbbmmmd',
-    '.......dbbmmmd',
-    '........dbbmmd',
-    '.......dmmbmmd',
-    '.......dmbmmmd',
-    '......dmbmmmmd',
-    '......dmbmmmd.',
-    '.....dmbmmmmd.',
-    '.....dmbmmmd..',
-    '....dmbmmmd...',
-    '...dmmmmmd....',
-    '..dmmmmd......',
-    '..dmmmd.......',
-    '..dmmd........',
-    '...ddd........',
-  ]);
-  // The terminal plume gives two little flicks; the tail base and every body
-  // cell stay fixed. The long idle interval keeps the lakeside posture peaceful.
-  const tailOffsets=Object.freeze([
-    Object.freeze([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
-    Object.freeze([1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
-    Object.freeze([-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
-  ]);
-  const twitchFrames=Object.freeze([1,1,2,0,1,0]);
-  function poseAt(time=0) {
-    const t=Number.isFinite(time)?Math.max(0,time):0;
-    const period=13.6,local=t%period;
-    const active=local>=9.7&&local<10.54;
-    const pose=active?twitchFrames[Math.min(5,Math.floor((local-9.7)/.14))]:0;
-    return Object.freeze({pose,active,cycle:Math.floor(t/period)});
+  const palette=Object.freeze({d:'#292e40',s:'#41495c',m:'#657185',b:'#8b95a4',
+    l:'#bbc5d8',h:'#c0cddd',p:'#a36c8d',q:'#755069',e:'#1c1e31',g:'#172b36'});
+  const bodyRows=Object.freeze([
+  "..................bbb......................",
+  "................bllbbb.....................",
+  "...............blmpppqs....................",
+  "...............bbppppqqs...................",
+  "..........bbb..bbppppqqs...................",
+  "........bbmmmmsbbppppqqs...................",
+  ".......bbpqqqmsmbmpppqqs...................",
+  ".......bbppqqmsmbbqqqqss...................",
+  "........sppqqmsbbsmqqss....................",
+  ".........sqqmsbbbbbsss.....................",
+  ".........bsmsbbbbbbmsssbb..................",
+  "........llbbbbbbbbmmmsbbbbbbs..............",
+  ".......bbbbbbbbbbmmmmmmmbbbbmss............",
+  "......bbbbbbbbbbmmmmmmmmbbbmmmss...........",
+  ".....bbbbbhebbbmmmmmmmmmbbmmmmmsss.........",
+  ".....sbbbbeebbbmmmmmmmmbbmmmmmmmsss........",
+  ".....ebbbbbbbbbmmmmmmmmbmmmmmmmmmss........",
+  ".....sbbbbbbbbbmmmmmmmmmmmmmmmmmmss........",
+  ".....sbbllbbbbbmmmmmmmmmmmmmmmmmmss........",
+  "......sbbllbbbbbmmmmmmmmmmmmmmmmsss........",
+  ".......smblbbbbbmmmmmmmmmmmmmmmmsss........",
+  ".........smmbbbmmmmmmmmmmmmmmmmssss........",
+  "............smmmmmmmmmmmmmmmmmmssss........",
+  ".............sssbbmmmmmmmmmmssssss.........",
+  ".............sbbbbmmmmmmmmmsssssss.........",
+  ".............llbbbmmmmmmmmmsssssss.........",
+  "..............ssbbbmmmmmmmssssssssd........",
+  "...............smmmmmmmmmmsssssssdd........",
+  "...............smmmmmmmmsssssssddd.........",
+  "................smmmmmssssssssddd..........",
+  ".................smsssssssssdddd...........",
+  "................dbbmmsssdddbbmmd...........",
+  "................ddddddd...ddddddd..........",
+  "..........................................."
+]);
+  const tailFrames=Object.freeze([
+  [
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    ".....................................mmm...",
+    "....................................mmbmm..",
+    "....................................mbbbms.",
+    "...................................mbbbmms.",
+    "...................................mbbbbms.",
+    "..................................mbbbbmms.",
+    "..................................mbbbmms..",
+    ".................................mbbbbms...",
+    "................................mbbbmmms...",
+    "................................mbbbmms....",
+    "...............................mbbbmms.....",
+    "..............................mbbbmms......",
+    ".............................mbbbmms.......",
+    ".............................mbbmms........",
+    ".............................mmsms.........",
+    "..............................sss..........",
+    "...........................................",
+    "..........................................."
+  ],
+  [
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "......................................mmm..",
+    ".....................................mmbmm.",
+    ".....................................mbbbms",
+    "....................................mbbbmms",
+    "...................................mbbbbms.",
+    "..................................mbbbbmms.",
+    "..................................mbbbmms..",
+    ".................................mbbbbms...",
+    "................................mbbbmmms...",
+    "................................mbbbmms....",
+    "...............................mbbbmms.....",
+    "..............................mbbbmms......",
+    ".............................mbbbmms.......",
+    ".............................mbbmms........",
+    ".............................mmsms.........",
+    "..............................sss..........",
+    "...........................................",
+    "..........................................."
+  ],
+  [
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "...........................................",
+    "....................................mmm....",
+    "...................................mmbmm...",
+    "...................................mbbbms..",
+    "...................................mbbbmms.",
+    "...................................mbbbbms.",
+    "..................................mbbbbmms.",
+    "..................................mbbbmms..",
+    ".................................mbbbbms...",
+    "................................mbbbmmms...",
+    "................................mbbbmms....",
+    "...............................mbbbmms.....",
+    "..............................mbbbmms......",
+    ".............................mbbbmms.......",
+    ".............................mbbmms........",
+    ".............................mmsms.........",
+    "..............................sss..........",
+    "...........................................",
+    "..........................................."
+  ]
+].map(rows=>Object.freeze(rows)));
+  const sequence=Object.freeze([1,1,0,2,0,1,0]);
+  function poseAt(time=0){
+    const t=Number.isFinite(time)?Math.max(0,time):0,local=t%15.4;
+    const active=local>=10.1&&local<11.01;
+    return Object.freeze({pose:active?sequence[Math.min(6,Math.floor((local-10.1)/.13))]:0,
+      active,cycle:Math.floor(t/15.4)});
   }
-  function cells(ctx,rows,x,y,offsets) {
-    for(let yy=0;yy<rows.length;yy++)for(let xx=0;xx<rows[yy].length;xx++) {
-      const color=palette[rows[yy][xx]];if(!color)continue;
-      ctx.fillStyle=color;ctx.fillRect(x+xx+(offsets?.[yy]||0),y+yy,1,1);
+  function drawRows(ctx,rows,x,y){
+    for(let yy=0;yy<rows.length;yy++)for(let xx=0;xx<rows[yy].length;xx++){
+      const colour=palette[rows[yy][xx]];if(!colour)continue;
+      ctx.fillStyle=colour;ctx.fillRect(x+xx,y+yy,1,1);
     }
   }
-  function create(w,h) {
-    const x=w-37,y=h-55;
-    const bounds=Object.freeze({x,y,width:36,height:34});
-    function draw(ctx,time=0) {
-      const state=poseAt(time);
-      ctx.fillStyle=palette.g;ctx.fillRect(x+11,y+33,16,1);
-      cells(ctx,tailRows,x+22,y+14,tailOffsets[state.pose]);
-      cells(ctx,torsoRows,x+8,y+11);
-      cells(ctx,headRows,x+1,y);
-      // A small black eye with a single cool reflection, a dark blunt nose,
-      // and short whiskers keep the head readable at the native scene size.
-      ctx.fillStyle=palette.e;ctx.fillRect(x+11,y+12,2,2);
-      ctx.fillStyle=palette.h;ctx.fillRect(x+11,y+12,1,1);
-      ctx.fillStyle=palette.m;ctx.fillRect(x+1,y+11,2,1);ctx.fillRect(x+1,y+17,3,1);
-      // The forepaws rest against the chest, visibly separate from the long
-      // hind foot beneath the rounded haunch.
-      ctx.fillStyle=palette.s;ctx.fillRect(x+10,y+23,5,2);
-      ctx.fillStyle=palette.b;ctx.fillRect(x+10,y+23,3,1);
-      ctx.fillStyle=palette.l;ctx.fillRect(x+10,y+24,2,1);
+  function create(w,h){
+    const x=w-44,y=h-54,bounds=Object.freeze({x,y,width:43,height:34});
+    function draw(ctx,time=0){
+      ctx.fillStyle=palette.g;ctx.fillRect(x+16,y+33,17,1);
+      drawRows(ctx,tailFrames[poseAt(time).pose],x,y);
+      drawRows(ctx,bodyRows,x,y);
     }
     return Object.freeze({draw,poseAt,bounds});
   }
-  return Object.freeze({create,poseAt,palette,headRows,torsoRows,tailRows});
+  return Object.freeze({create,poseAt,palette,bodyRows,tailFrames});
 })();
 
 globalThis.NativeLighting = (() => {

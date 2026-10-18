@@ -34,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 9 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 10 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -43,7 +43,7 @@ lossy illustration plates, or random surface textures.
 The darker blue and plum dusk palette leaves room for the light sources. Four
 sky swatches meet through ordered dithering. The cool moon disc has a few
 short crater groups and an aura whose native-pixel coverage thins into the
-sky. Complete reviewed frames contain 53 opaque colours, including lighting
+sky. Complete reviewed frames contain 54 opaque colours, including lighting
 and motion. The 56-colour test budget leaves a small margin for the distinct
 lime-gold firefly ramp and warm fire/paper shades.
 
@@ -54,17 +54,23 @@ all the blossoms and partially visible branches. Portrait screens use an
 overhanging bough. Four small hanging tips respond to the same wind as the
 petals; their anchors remain fixed while their end poses move one pixel.
 
-The slightly wider foreground bank retains explicit depth order: ground,
-rear grasses, seated stones, short grass at stone bases, and a low campfire
-hearth. Crossed logs support six authored flame poses, with up to two small
+The foreground bank retains explicit depth order: ground, rear grasses, seated
+stones, short grass at stone bases, and a low campfire hearth. Its continuous
+shoreline ends at the actual viewport bottom. Boulders derive their positions
+from that same contour, with soil beneath their complete contact shadows and a
+grass margin toward the lake. A boulder is omitted if its seated base cannot
+fit on a short screen. Crossed logs support six authored flame poses, with up to two small
 embers. A palette-aware lighting pass recolours nearby facing surfaces within
 a dithered falloff. It advances each material along deliberate warm colour
 ramps, retains opaque pixels and object shadows, and flickers with the flame.
 It does not draw a blurred or translucent light image over the scene.
 
-Three mountain layers, a layered conifer grove on the far left shore, and a
-far-shore pavilion give the lake depth. The grove uses varied stepped branch
-silhouettes in subdued blue and teal. The pavilion has a lit window and a short reflection. Moonlight opens toward the
+Three mountain layers, a dense conifer forest on the far left shore, and a
+far-shore pavilion give the lake depth. The forest uses five unscaled branch
+silhouettes, 9–16 cells high, in three connected belts. A darker rear belt,
+muted blue middle belt, and blue-green foreground belt provide depth without
+enlarging the trees. Varied crown heights and an irregular edge keep the forest
+from reading as a row of repeated icons. The pavilion has a lit window and a short reflection. Moonlight opens toward the
 viewer in asymmetric horizontal pools, broken by dark water and smaller cool
 glints. These planes have fixed native heights, including on portrait screens.
 Five lily-pad groups include two open lotus flowers, two buds, and a leaf-only
@@ -88,10 +94,13 @@ the lotus and lily pads. The insects keep a stable count instead of disappearing
 at an exclusion edge.
 
 A small chinchilla sits on the enlarged right bank, facing across the lake.
-Its rebuilt silhouette has a smaller blunt head, a larger rounded torso and
-haunch, forward-facing ear bowls, tucked forepaws, and a thick sweeping brush
-tail rooted low behind the rump. Each part uses authored native-cell sprites. The seated body stays fixed while the tail briefly twitches
-through anchored poses. The bank supports its feet, and the complete character
+Its 43 by 34 cell sprite has a broad cheek, a blunt muzzle, a larger rounded
+body, forward-facing ear bowls, a small tucked hand, and a full brush tail
+rooted low behind the rump. Neutral grey fur planes, a small pale cheek patch,
+and restrained folded-leg shading describe its form without a dark neck break
+or an outlined haunch ring. The seated body stays fixed while the upper tail
+tip briefly shifts by one cell through three anchored poses. The bank supports
+its feet, and the complete character
 remains above the bottom caption on narrow phone screens.
 
 ## Display grid and type
@@ -145,7 +154,8 @@ follow the canopy's native coordinates, with only eight cells of horizontal
 spread, so a wider viewport cannot move the sources beyond the tree. Each petal
 turns through eight native poses of one to three pixels, with individual flutter
 and the same rightward breeze. Protected rectangles keep the particle shapes
-away from both labels.
+away from both labels and the chinchilla, preventing petal cells from obscuring
+its face or being mistaken for fur markings.
 
 Water marks and lily ripples move by at most one native pixel. Each frame begins
 with the complete background, so motion does not accumulate trails or holes.
@@ -188,7 +198,8 @@ pictures, release links, and renderer code synchronized.
 Tests cover glyphs, frame coverage, physical pixel alignment, palette limits,
 cloud contours and offscreen wraps, meteor direction and afterglint, water
 motion, separate particle palettes, full-glow exclusion, reduced motion,
-lifecycle recovery, and release integrity. See `tests/README.md`.
+lifecycle recovery, grounded boulder faces and contact margins on seven layouts,
+and release integrity. See `tests/README.md`.
 
 Visual review is a separate gate: inspect native and enlarged desktop, phone,
 tablet, and panoramic compositions, including animation frames. For this

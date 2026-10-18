@@ -23,6 +23,11 @@ integer coordinates, changing speed, depth order, controlled cloud overlaps,
 and complete offscreen wrapping
 across multiple layouts.
 
+`grounding.test.cjs` inspects rendered boulder bottoms and their complete contact
+shadows on seven phone and landscape layouts. It verifies soil and a grass
+margin beneath every visible rock, an uninterrupted bank, and water-plant
+centres remaining in the lake.
+
 `lifecycle.test.cjs` uses a small mock DOM and controllable frame clock. It covers
 synchronous first paint including the small caption, fallback and bounded
 recovery after scene or caption rendering errors,
@@ -35,7 +40,7 @@ decoding is involved.
 `release.test.cjs` checks the published document's resource references and the
 content hashes in `assets/release.json`. It verifies that the single deferred
 bundle contains the source modules in dependency order and that the frozen
-revision 4 scripts retain their original Git blob hashes and all v5/v6/v7/v8 release
+revision 4 scripts retain their original Git blob hashes and all v5/v6/v7/v8/v9 release
 resources retain their exact published bytes. Keep those legacy
 files and previously published fingerprinted assets for cached older documents.
 
