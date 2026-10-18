@@ -33,28 +33,39 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 5 retains a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 6 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
 lossy illustration plates, or random surface textures.
 
-The dusk sky uses four flat swatches with ordered dithering across shallow,
-curved boundaries. The moon has two stepped aura bands. The reviewed desktop
-frame contains 45 opaque colours; tests cap complete frames at 48, allowing
-the deliberate light, foliage, and animation swatches.
+The darker blue and plum dusk palette leaves room for the light sources. Four
+sky swatches meet through ordered dithering. The cool moon disc has a few
+short crater groups and an aura whose native-pixel coverage thins into the
+sky. Complete reviewed frames contain 48 opaque colours, including lighting
+and motion; tests retain that 48-colour ceiling.
 
-The cherry tree has a curved, tapered trunk, connected supporting branches,
-interlocking blossom masses, and smaller flower accents. Portrait screens use
-an overhanging bough. Ground, warm light facets, rear grasses, seated stones,
-short grass at stone bases, and the lantern are painted in explicit depth
-order. Warm-facing facets connect the lantern's light to nearby surfaces.
+The cherry canopy is assembled from small authored blossom sprays at 1:1
+resolution. Its finer 1–3 pixel edge steps and connected interior groups avoid
+the appearance of enlarged block shapes. A continuous dark backing supports
+all the blossoms and partially visible branches. Portrait screens use an
+overhanging bough. Four small hanging tips respond to the same wind as the
+petals; their anchors remain fixed while their end poses move one pixel.
+
+Ground, rear grasses, seated stones, short grass at stone bases, and the
+lantern retain explicit depth order. A small palette-aware lighting pass
+recolours lantern-facing surfaces within a dithered falloff. It advances each
+material along deliberate warm colour ramps, retains opaque pixels and object
+shadows, and varies very slightly with the flame. It does not draw a blurred
+or translucent light image over the scene.
 
 Three mountain layers and a far-shore pavilion give the lake depth. The
-pavilion has a lit window and a short reflection. Broken moonlight marks widen
-toward the viewer. Three groups of lily pads, an open lotus, and a smaller bud
-sit in open water with restrained ripples. Fireflies remain visible in their
-dim phase and use small stepped highlights rather than blurred glows.
+pavilion has a lit window and a short reflection. Moonlight opens toward the
+viewer in asymmetric horizontal pools, broken by dark water and smaller cool
+glints. These planes have fixed native heights, including on portrait screens.
+Three lily-pad groups, an open lotus, and a smaller bud remain in open water.
+Fireflies keep a visible core throughout their pulse and use compact, one- to
+three-cell light shapes.
 
 ## Display grid and type
 
@@ -81,12 +92,17 @@ Python's `fontTools` and run `python assets/fonts/build-welcome-mask.py`.
 
 ## Motion, recovery, and fallback
 
-`src/scene.js` caches static layers. Clouds move slowly in whole-pixel steps;
-water marks and lily ripples move by at most one native pixel. Petals, stars,
-and fireflies provide sparse motion. Each frame begins with the complete
-background, so animation does not accumulate trails or holes. The shooting
-star travels down-left with its previous positions forming the tail up-right.
-The first pass begins after 7.5 seconds; subsequent passes are 29 seconds apart.
+`src/scene.js` caches static layers. A deterministic shared wind phase drives
+whole-pixel cloud drift, the small hanging canopy tips, and falling petals.
+The scene uses 16 desktop and 12 portrait petal sources. Each one turns through
+eight native poses of one to three pixels, with individual flutter and a shared
+breeze. A protected rectangle keeps the particle shapes away from the heading.
+
+Water marks and lily ripples move by at most one native pixel. Each frame begins
+with the complete background, so motion does not accumulate trails or holes.
+The shooting star has a compact leading wedge, a short two-cell shoulder, and
+a one-cell taper. It travels down-left; earlier head positions form its tail
+up-right. The first pass begins after 7.5 seconds, then repeats every 29 seconds.
 
 The renderer paints synchronously and reveals the canvas only after a complete
 successful frame. It caps animation at 24 FPS, pauses hidden or frozen pages,

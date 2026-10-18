@@ -1,63 +1,67 @@
-/* A dusk sky painted with four swatches and ordered native-pixel transitions. */
+/* Dusk atmosphere and moon, painted with native cells and a small opaque palette. */
 globalThis.NativeSky = (() => {
   'use strict';
-  const P=Object.freeze({deep:'#3d3757',mid:'#4e4267',sky:'#60527c',haze:'#7e6b93',
-    halo:'#837fae',star:'#bca1bb',light:'#ffddcd',cream:'#fff1d8'});
+  const P=Object.freeze({deep:'#191c36',mid:'#292a44',sky:'#3e3755',haze:'#594563',
+    aura:'#323a53',halo:'#4b5c76',moonShade:'#c0cddd',moon:'#e8eeee',
+    star:'#728fa9',light:'#bbc5d8',cream:'#fff1d8'});
   const bayer=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
-  function rect(c,x,y,w,h,color){c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));}
+  const rect=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));};
   function sky(c,w,h,horizon) {
     rect(c,0,0,w,h,P.deep);
     const bands=[
-      [Math.round(horizon*.16),24,P.mid,[-3,-6,-4,1,3,0,-2]],
-      [Math.round(horizon*.49),28,P.sky,[4,1,-3,-5,-1,3,5]],
-      [Math.round(horizon*.79),20,P.haze,[-2,1,4,2,-2,-4,-1]],
+      [Math.round(horizon*.12),27,P.mid,[-4,-7,-3,1,3,0,-2]],
+      [Math.round(horizon*.47),28,P.sky,[5,1,-4,-6,-1,4,6]],
+      [Math.round(horizon*.79),24,P.haze,[-1,2,5,3,-2,-4,-1]],
     ];
-    for(const [height,depth,color,curve]of bands){
-      for(let x=0;x<w;x++){
-        const position=x/Math.max(1,w-1)*(curve.length-1),left=Math.floor(position);
-        const offset=curve[left]+(curve[Math.min(left+1,curve.length-1)]-curve[left])*(position-left);
-        const boundary=height+Math.round(offset),span=depth+Math.round(offset/2);
-        rect(c,x,boundary+span,1,h-boundary-span,color);
-        for(let y=boundary;y<boundary+span;y++){
-          const count=Math.floor((y-boundary+1)/span*16);
-          if(bayer[(y+1024)%4][x%4]<count)rect(c,x,y,1,1,color);
-        }
+    for(const [height,depth,color,curve]of bands)for(let x=0;x<w;x++){
+      const position=x/Math.max(1,w-1)*(curve.length-1),left=Math.floor(position);
+      const offset=curve[left]+(curve[Math.min(left+1,curve.length-1)]-curve[left])*(position-left);
+      const boundary=height+Math.round(offset),span=depth+Math.round(offset/2);
+      rect(c,x,boundary+span,1,h-boundary-span,color);
+      for(let y=boundary;y<boundary+span;y++){
+        const count=Math.floor((y-boundary+1)/span*16);
+        if(bayer[(y+1024)%4][x%4]<count)rect(c,x,y,1,1,color);
       }
     }
   }
   function moon(c,x,y) {
-    // Two connected light bands keep the moon's silhouette calm and readable.
-    for(let dy=-16;dy<=16;dy++)for(let dx=-16;dx<=16;dx++){
-      const distance=dx*dx+dy*dy;
-      if(distance<=13*13)rect(c,x+dx,y+dy,1,1,P.halo);
-      else if(distance<=16*16)rect(c,x+dx,y+dy,1,1,P.sky);
+    // The aura thins into the existing sky, rather than ending at a solid ring.
+    // Its ordered coverage changes; all drawn cells remain fully opaque.
+    for(let dy=-24;dy<=24;dy++)for(let dx=-26;dx<=26;dx++){
+      const radius=Math.sqrt(dx*dx*.9+dy*dy);
+      if(radius<10||radius>25)continue;
+      const density=Math.max(0,1-(radius-10)/15);
+      const threshold=Math.floor(density*density*13);
+      if(bayer[(y+dy+1024)%4][(x+dx+1024)%4]<threshold)
+        rect(c,x+dx,y+dy,1,1,radius<12.5?P.halo:P.aura);
     }
+    // A small cool ivory disc; short asymmetrical crater groups imply its form.
     const rows=[6,10,14,16,18,18,20,20,20,20,20,20,20,20,18,18,16,14,10,6];
-    for(let row=0;row<rows.length;row++)rect(c,x-rows[row]/2,y-10+row,rows[row],1,P.cream);
-    // A shaded rim and two small craters; the disc is still one clear silhouette.
-    for(const [a,b,width]of [[4,7,3],[6,5,2],[7,2,2],[3,3,3],[-4,-4,2]])rect(c,x+a,y+b,width,1,P.light);
+    for(let row=0;row<rows.length;row++)rect(c,x-rows[row]/2,y-10+row,rows[row],1,P.moon);
+    for(const [dx,dy,width]of [[-8,3,2],[-8,4,3],[-7,5,2],[-6,6,4],[-5,7,3],
+      [3,3,3],[4,4,2],[6,-2,2],[-3,-5,2]])rect(c,x+dx,y+dy,width,1,P.moonShade);
+    rect(c,x-2,y-8,4,1,P.cream);rect(c,x+2,y-7,2,1,P.cream);
   }
   const constellations=[
     [.39,.064,1],[.48,.092,0],[.58,.045,1],[.66,.11,0],[.89,.068,1],[.95,.162,0],
     [.38,.19,0],[.47,.22,1],[.59,.168,0],[.67,.245,1],[.88,.28,0],[.95,.36,1],
-    [.35,.335,0],[.43,.375,0],[.54,.31,1],[.70,.36,0],[.82,.39,0]
+    [.35,.335,0],[.43,.375,0],[.54,.31,1],[.70,.36,0],[.82,.39,0],
+    [.26,.18,0],[.54,.135,0],[.74,.075,0],[.91,.405,0]
   ];
-  function stars(c,w,h,moonPosition) {
+  function stars(c,w,h,position){
     const list=constellations.map(([a,b,bright],i)=>({x:Math.round(w*a),y:Math.round(h*b),bright,phase:i*1.63}));
-    const visible=list.filter(star=>(star.x-moonPosition.x)**2+(star.y-moonPosition.y)**2>26**2);
-    for(const star of visible) {
+    const visible=list.filter(star=>(star.x-position.x)**2+(star.y-position.y)**2>28**2);
+    for(const star of visible){
       rect(c,star.x,star.y,1,1,star.bright?P.light:P.star);
-      // Two larger stars give the field a hierarchy without carpeting it in noise.
       if(star.bright&&[0,4].includes(list.indexOf(star))){
         rect(c,star.x-1,star.y,3,1,P.star);rect(c,star.x,star.y-1,1,3,P.star);
-        rect(c,star.x,star.y,1,1,P.cream);
+        rect(c,star.x,star.y,1,1,P.light);
       }
     }
     return visible;
   }
-  function draw(c,w,h,moonPosition,horizon=Math.round(h*.64)) {
-    sky(c,w,h,horizon);moon(c,moonPosition.x,moonPosition.y);
-    return stars(c,w,h,moonPosition);
+  function draw(c,w,h,position,horizon=Math.round(h*.64)){
+    sky(c,w,h,horizon);moon(c,position.x,position.y);return stars(c,w,h,position);
   }
   return Object.freeze({draw,sky,moon,stars,palette:P});
 })();
@@ -96,10 +100,10 @@ globalThis.NativeClouds = Object.freeze({
     ],
     "palette": {
       ".": null,
-      "s": "#aa89ba",
-      "b": "#d49cbd",
-      "l": "#efb4c4",
-      "r": "#ffddcd"
+      "s": "#504563",
+      "b": "#79637f",
+      "l": "#ad859e",
+      "r": "#cf9faa"
     }
   },
   "small": {
@@ -127,27 +131,23 @@ globalThis.NativeClouds = Object.freeze({
     ],
     "palette": {
       ".": null,
-      "s": "#aa89ba",
-      "b": "#d49cbd",
-      "l": "#efb4c4",
-      "r": "#ffddcd"
+      "s": "#504563",
+      "b": "#79637f",
+      "l": "#ad859e",
+      "r": "#cf9faa"
     }
   }
 });
 
-
-/* Native 1:1 pixel scenery. All contours, reflection groups and wavelets are authored.
- * The landscape stays at one pixel scale when the viewport changes; it is cropped,
- * never stretched. Optional fifth argument: { horizon, reflectionX }.
- */
 globalThis.NativeLandscape = (() => {
   'use strict';
   const P = Object.freeze({
-    far: '#9b8ebc', farShade: '#837fae', middle: '#656d99',
-    middleShade: '#4a597e', near: '#3f536f', water: '#526c8c',
-    waterLight: '#7592aa', lavender: '#bca1bb', pink: '#efb4c4',
-    cream: '#ffddcd', amber: '#edb781', padShadow: '#3d5960',
-    pad: '#52786f', padLight: '#7ca28b', lotusShade: '#a45c86', lotus: '#c87a9b'
+    far: '#625979', farShade: '#545373', middle: '#4c4e70',
+    middleShade: '#37435d', near: '#233147', water: '#263c55',
+    waterGlow: '#2d445d', waterLight: '#45647e', moonWater: '#728fa9',
+    lavender: '#c0cddd', pink: '#dab5cc', cream: '#fff1d8',
+    amber: '#ecb779', padShadow: '#233c45', pad: '#385b5b',
+    padLight: '#608278', lotusShade: '#563750', lotus: '#a36c8d'
   });
   function rect(ctx, x, y, width, height, colour) {
     ctx.fillStyle = colour;
@@ -271,20 +271,50 @@ globalThis.NativeLandscape = (() => {
     [2,.83,47,1,'waterLight'],
     [79,.95,58,2,'middleShade']
   ];
-  const reflection = [
-    // A close, broken stem opens into three asymmetric groups. Fixed small
-    // offsets inside each group prevent tall screens turning it into a ladder.
-    // x from moon, distance, extra pixel offset, length, thickness, tone
-    [-2,3,0,5,1,'pink'],[-1,3,0,2,1,'cream'],
-    [-3,5,0,3,1,'lavender'],[1,6,0,3,1,'pink'],
-    [-4,9,0,8,1,'lavender'],[-2,11,0,5,1,'waterLight'],
-    [-5,.27,0,9,1,'lavender'],[-1,.27,0,3,1,'pink'],[6,.27,2,7,1,'waterLight'],
-    [-12,.48,0,17,1,'waterLight'],[1,.48,2,11,1,'lavender'],
-    [-20,.69,0,25,1,'waterLight'],[-6,.69,0,8,1,'lavender'],
-    [10,.69,3,17,1,'waterLight'],
-    [-29,.91,0,23,1,'waterLight'],[-1,.91,3,35,1,'waterLight'],
-    [1,.91,3,11,1,'lavender']
-  ];
+  // The pool of moonlight is a low-contrast, connected reflection. Its broadening
+  // contours turn and overlap like water; the brightest marks are kept sparse.
+  function moonlight(ctx,w,h,horizon,time,reflectionX) {
+    const depth=h-horizon, moon=Math.round(reflectionX);
+    const vertical=f=>horizon+Math.round(f*depth);
+    // Low-contrast planes spread sideways across the surface. Separate coves
+    // of dark water keep the reflection from becoming a filled cone or beam.
+    const spill=[
+      {x:-4,y:.025,points:[[1,0],[8,0],[8,3],[12,3],[12,5],[9,5],[9,8],[-3,8],[-3,5],[0,5],[0,2]]},
+      {x:-12,y:.145,points:[[4,0],[18,0],[18,3],[25,3],[25,5],[16,5],[16,8],[-3,8],[-3,6],[1,6],[1,3],[4,3]]},
+      {x:-21,y:.275,points:[[7,0],[28,0],[28,2],[38,2],[38,5],[29,5],[29,7],[15,7],[15,10],[-5,10],[-5,7],[2,7],[2,4],[7,4]]},
+      {x:-30,y:.45,points:[[9,0],[37,0],[37,2],[50,2],[50,6],[40,6],[40,9],[13,9],[13,11],[-6,11],[-6,8],[1,8],[1,5],[9,5]]},
+      {x:-46,y:.645,points:[[15,0],[60,0],[60,2],[72,2],[72,6],[62,6],[62,8],[34,8],[34,12],[5,12],[5,9],[-4,9],[-4,6],[15,6]]},
+      {x:-58,y:.84,points:[[15,0],[61,0],[61,2],[86,2],[86,5],[99,5],[99,8],[88,8],[88,10],[50,10],[50,14],[7,14],[7,12],[-3,12],[-3,9],[19,9],[19,6],[15,6]]}
+    ];
+    for(const pool of spill)poly(ctx,pool.points.map(([x,y])=>[moon+pool.x+x,vertical(pool.y)+y]),P.waterGlow);
+    // Short, asymmetric water planes sit inside the dim reflection. Their
+    // heights are fixed native pixels, while their spacing follows perspective.
+    // Keeping the planes mostly horizontal avoids a vertical column of light.
+    const pools=[
+      {x:-3,y:.05,points:[[0,0],[8,0],[6,1],[10,2],[6,3],[-2,3],[-2,1]]},
+      {x:-5,y:.16,points:[[0,0],[12,0],[12,1],[7,1],[7,2],[-3,2],[-3,1]]},
+      {x:-11,y:.30,points:[[0,0],[15,0],[15,1],[24,1],[24,3],[17,3],[17,4],[-5,4],[-5,2],[0,2]]},
+      {x:-17,y:.47,points:[[0,0],[32,0],[32,2],[25,2],[25,3],[34,3],[34,4],[8,4],[8,6],[-7,6],[-7,4],[-2,4],[-2,2]]},
+      {x:-29,y:.67,points:[[0,0],[22,0],[22,1],[48,1],[48,3],[40,3],[40,4],[8,4],[8,6],[-3,6],[-3,3],[0,3]]},
+      {x:-40,y:.87,points:[[0,0],[36,0],[36,2],[68,2],[68,4],[53,4],[53,5],[20,5],[20,7],[-7,7],[-7,5],[5,5],[5,3],[0,3]]}
+    ];
+    for(const pool of pools)poly(ctx,pool.points.map(([x,y])=>[moon+pool.x+x,vertical(pool.y)+y]),P.waterLight);
+    // Unequal shadow tongues interrupt the edge of the pool; their placement is
+    // irregular and never repeats a stripe across its full width.
+    const shadows=[[-13,.20,9,1],[6,.30,15,1],[-30,.39,23,2],[7,.49,18,1],
+      [-37,.56,21,2],[12,.70,25,1],[-45,.76,29,2],[20,.91,22,1],[-31,.95,38,2]];
+    for(const [x,y,width,thickness] of shadows)rect(ctx,moon+x,vertical(y),width,thickness,P.water);
+    const sway=[0,0,1,1,0,0,-1,-1],phase=Math.floor(Math.max(time,0)*3)%8;
+    // Tiny distant glints open into a few quiet horizontal accents close by.
+    const glints=[[-2,.025,4,0],[-4,.072,7,1],[1,.125,4,0],[-6,.16,6,0],
+      [-5,.30,8,1],[0,.32,6,0],[-11,.47,10,1],[5,.49,8,0],
+      [-21,.67,11,0],[-6,.69,15,1],[-33,.87,14,0],[8,.89,11,0]];
+    for(const [i,[x,y,width,bright]]of glints.entries()) {
+      const drift=y<.13?0:sway[(phase+i*3)%8];
+      rect(ctx,moon+x+drift,vertical(y),width,1,bright?P.lavender:P.moonWater);
+    }
+    rect(ctx,moon-1,horizon+1,2,1,P.cream);
+  }
   const pads = Object.freeze({
     large: [
       '.....lllllll.....',
@@ -350,7 +380,7 @@ globalThis.NativeLandscape = (() => {
         leaf(ctx,x-12,y+4,'small');
         leaf(ctx,x-9,y,'large');
         cells(ctx,lotusRows,x-5,y-5,palette);
-        rect(ctx,x-4,y+9,5,1,P.lavender);
+        rect(ctx,x-4,y+9,5,1,P.lotusShade);
       } else if(kind===1) {
         leaf(ctx,x-10,y+3,'small');
         leaf(ctx,x-2,y,'medium');
@@ -366,8 +396,8 @@ globalThis.NativeLandscape = (() => {
     const centre = Math.round(w / 2);
     rect(ctx, 0, horizon, w, depth, P.water);
     // One crisp horizon glint joins the distant shore; it is not a gradient band.
-    rect(ctx, 0, horizon + 1, w, 1, P.waterLight);
-    rect(ctx, centre - 24, horizon, 44, 1, P.lavender);
+    rect(ctx, 0, horizon + 1, w, 1, P.middleShade);
+    rect(ctx, centre - 24, horizon, 44, 1, P.waterLight);
     rect(ctx, centre - 77, horizon + 3, 23, 1, P.middleShade);
     rect(ctx, centre + 30, horizon + 3, 27, 1, P.middleShade);
     rect(ctx, 0, horizon + 2, Math.max(0, centre - 92), 2, P.middleShade);
@@ -388,16 +418,11 @@ globalThis.NativeLandscape = (() => {
         rect(ctx, centre + x + 11 - drift, yy + 2, 18, 1, P[tone]);
       }
     }
-    for (let i = 0; i < reflection.length; i++) {
-      const [x, y, extra, length, thickness, tone] = reflection[i];
-      const yy = horizon + (y < 1 ? Math.round(y * depth) : y) + extra;
-      const drift = y >= 1 ? 0 : sway[(phase + i * 2) % sway.length];
-      rect(ctx, reflectionX + x + drift, yy, length, thickness, P[tone]);
-    }
+    moonlight(ctx,w,h,horizon,time,reflectionX);
     // The distant lantern leaves only a small warm trace beside its islet.
     const pavilionX=Math.round(w*.71);
     rect(ctx,pavilionX-1,horizon+3,2,1,P.amber);
-    rect(ctx,pavilionX-2,horizon+6,4,1,P.lavender);
+    rect(ctx,pavilionX-2,horizon+6,4,1,P.waterLight);
     lilyPads(ctx,w,h,horizon,time);
   }
   function draw(ctx, w, h, time = 0, options = {}) {
@@ -409,15 +434,14 @@ globalThis.NativeLandscape = (() => {
   return Object.freeze({ draw, mountain, lake, lilyPads, palette: P });
 })();
 
-/* Native pixel garden: deliberate clusters and explicit depth ordering. */
 globalThis.NativeGarden = (() => {
   'use strict';
   const P = Object.freeze({
-    ink:'#272138', barkDark:'#3c293e', bark:'#684052', barkLight:'#985c64', barkWarm:'#bd8368',
-    grassDark:'#243842', grass:'#3b514f', grassLight:'#64735d', grassWarm:'#867754', grassLit:'#b39a68',
-    flowerDark:'#74456f', flowerShade:'#a65c86', flower:'#cf81a0', flowerLight:'#edabb8', flowerHigh:'#ffd5ba',
-    stoneDark:'#393947', stone:'#565568', stoneLight:'#7a7080', stoneWarm:'#a58a78',
-    amber:'#eab77d', cream:'#fff1d8'
+    ink:'#1c1e31', barkDark:'#2a2035', bark:'#493043', barkLight:'#755069', barkWarm:'#92715f',
+    grassDark:'#172b36', grass:'#2e454a', grassLight:'#526863', grassWarm:'#4c4b3d', grassLit:'#71634c',
+    flowerDark:'#35283f', flowerShade:'#563750', flower:'#865271', flowerLight:'#a36c8d', flowerHigh:'#dab5cc',
+    stoneDark:'#292e40', stone:'#41495c', stoneLight:'#657185', stoneWarm:'#8b7566',
+    amber:'#ecb779', cream:'#fff1d8'
   });
   function rect(c,x,y,w,h,color) { c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h)); }
   function poly(c,points,color) {
@@ -444,84 +468,198 @@ globalThis.NativeGarden = (() => {
     rect(c,x+1,y,2,1,petal);rect(c,x,y+1,4,2,petal);rect(c,x+1,y+3,2,1,petal);
     rect(c,x+1,y+1,1,1,centre);
   }
+  // Each spray is drawn at 1:1 native resolution. Their 1–3 px edge steps are
+  // deliberately independent of the much larger lighting masses beneath them.
+  const sprays = [
+    [
+      '....mm.....',
+      '..mmlmmm...',
+      '.mlllllmm..',
+      'mmllmlllm..',
+      '.mllllmmm..',
+      '..mmllm.m..',
+      '...mmm.....',
+    ],
+    [
+      '.....mm.....',
+      '...mmlmm....',
+      '..mmlllm.m..',
+      '.mllmllllmm.',
+      'mmllllmlmm..',
+      '.mmllmmm....',
+      '..mmm.mm....',
+      '...m........',
+    ],
+    [
+      '...mm.....',
+      '..mllmm...',
+      '.mlllllm..',
+      'mmllmllmm.',
+      '.mllllmm..',
+      '..mmllm...',
+      '...mmm....',
+      '....m.....',
+    ],
+    [
+      '.....m.....',
+      '...mmllm...',
+      '.mmmlllm...',
+      'mmllmlllmm.',
+      '.mllllmlmm.',
+      '..mmmllmm..',
+      '....mmm....',
+    ],
+    [
+      '..mm.....',
+      '.mllmm...',
+      'mmllllmm.',
+      '.mllmlmm.',
+      '..mllmm..',
+      '...mmm...',
+      '....m....',
+    ],
+  ];
+  function spray(c,x,y,kind=0,lit=false) {
+    const cells=sprays[kind%sprays.length];
+    const colors={m:P.flower,l:lit?P.flowerLight:P.flower};
+    for(let sy=0;sy<cells.length;sy++)for(let sx=0;sx<cells[sy].length;sx++) {
+      const color=colors[cells[sy][sx]];
+      if(color)rect(c,x+sx,y+sy,1,1,color);
+    }
+  }
+  function blossom(c,x,y,lit=false) {
+    // A few petals and a single warm centre describe a flower without making
+    // every leaf clump into an identical high-contrast cross.
+    const pink=lit?P.flowerHigh:P.flowerLight;
+    rect(c,x+1,y,1,1,pink);rect(c,x,y+1,3,1,pink);
+    rect(c,x+1,y+2,1,1,P.flower);rect(c,x+1,y+1,1,1,lit?P.cream:P.flowerHigh);
+  }
   function canopy(c,x,y) {
     const shape=(points,color)=>poly(c,points.map(p=>[x+p[0],y+p[1]]),color);
-    // The back silhouette carries every foreground mass. Nothing is erased.
-    shape([[-30,-12],[46,-12],[46,-7],[62,-7],[62,-2],[77,-2],[77,3],
-      [86,3],[86,8],[98,8],[98,13],[108,13],[108,19],[115,19],[115,25],
-      [121,25],[121,31],[116,31],[116,35],[124,35],[124,41],[129,41],
-      [129,47],[124,47],[124,53],[116,53],[116,58],[109,58],[109,63],
-      [101,63],[101,60],[96,60],[96,67],[87,67],[87,72],[77,72],[77,69],
-      [70,69],[70,75],[59,75],[59,80],[48,80],[48,84],[37,84],[37,80],
-      [31,80],[31,85],[17,85],[17,80],[7,80],[7,77],[-5,77],[-5,72],
-      [-16,72],[-16,68],[-30,68]],P.flowerDark);
-    // Large mid-tone masses merge, while the hanging lower edges stay shaded.
-    shape([[-30,-12],[46,-12],[46,-7],[62,-7],[62,-2],[77,-2],[77,3],
-      [86,3],[86,8],[98,8],[98,13],[108,13],[108,19],[115,19],[115,24],
-      [119,24],[119,28],[113,28],[113,34],[120,34],[120,39],[124,39],
-      [124,44],[119,44],[119,49],[111,49],[111,54],[101,54],[101,58],
-      [91,58],[91,63],[83,63],[83,65],[70,65],[70,70],[56,70],[56,75],
-      [45,75],[45,78],[36,78],[36,75],[29,75],[29,79],[19,79],[19,74],
-      [9,74],[9,70],[-2,70],[-2,65],[-14,65],[-14,61],[-30,61]],P.flowerShade);
-    // A few interlocking rose forms give the crown a branching rhythm. Their
-    // edges differ in size; there is no tiled tuft, outline, or texture noise.
-    shape([[-30,-12],[16,-12],[16,-8],[27,-8],[27,-4],[35,-4],[35,2],
-      [42,2],[42,8],[39,8],[39,13],[31,13],[31,18],[24,18],[24,22],
-      [14,22],[14,19],[6,19],[6,24],[-4,24],[-4,21],[-16,21],[-16,26],[-30,26]],P.flower);
-    shape([[26,-9],[45,-9],[45,-4],[58,-4],[58,1],[71,1],[71,5],
-      [81,5],[81,10],[91,10],[91,15],[102,15],[102,20],[109,20],
-      [109,25],[102,25],[102,30],[93,30],[93,34],[84,34],[84,30],
-      [77,30],[77,26],[68,26],[68,22],[60,22],[60,18],[49,18],[49,14],
-      [40,14],[40,9],[34,9],[34,2],[26,2]],P.flower);
-    shape([[-30,30],[-19,30],[-19,26],[-8,26],[-8,23],[3,23],[3,27],
-      [15,27],[15,32],[24,32],[24,36],[30,36],[30,43],[26,43],
-      [26,49],[19,49],[19,54],[7,54],[7,59],[-4,59],[-4,55],
-      [-13,55],[-13,59],[-22,59],[-22,54],[-30,54]],P.flower);
-    shape([[28,22],[38,22],[38,18],[47,18],[47,22],[56,22],[56,28],
-      [65,28],[65,32],[72,32],[72,37],[80,37],[80,41],[74,41],
-      [74,47],[66,47],[66,53],[59,53],[59,59],[47,59],[47,64],
-      [35,64],[35,59],[28,59],[28,53],[22,53],[22,47],[28,47],
-      [28,42],[24,42],[24,35],[28,35]],P.flower);
-    shape([[87,34],[96,34],[96,31],[106,31],[106,35],[115,35],[115,40],
-      [122,40],[122,44],[116,44],[116,48],[109,48],[109,52],[102,52],
-      [102,56],[94,56],[94,52],[86,52],[86,47],[81,47],[81,41],[87,41]],P.flower);
-    shape([[4,60],[14,60],[14,56],[25,56],[25,60],[34,60],[34,64],
-      [42,64],[42,69],[36,69],[36,74],[29,74],[29,71],[22,71],
-      [22,75],[14,75],[14,71],[7,71],[7,67],[1,67],[1,63]],P.flower);
-    // Smaller light clusters follow the upper/right-facing surfaces of each
-    // larger mass. Their irregular shapes leave breathing room between flowers.
-    const lightGroups=[
-      [[-11,-3],[-2,-3],[-2,-6],[7,-6],[7,-3],[13,-3],[13,1],[20,1],
-        [20,5],[16,5],[16,9],[8,9],[8,12],[1,12],[1,9],[-7,9],[-7,5],[-11,5]],
-      [[27,-3],[34,-3],[34,-5],[43,-5],[43,-1],[50,-1],[50,3],[57,3],
-        [57,7],[53,7],[53,10],[46,10],[46,7],[39,7],[39,4],[32,4],[32,1],[27,1]],
-      [[63,5],[70,5],[70,8],[77,8],[77,11],[85,11],[85,15],[91,15],
-        [91,19],[86,19],[86,22],[79,22],[79,18],[73,18],[73,14],[67,14],[67,10],[63,10]],
-      [[93,22],[100,22],[100,25],[105,25],[105,28],[100,28],[100,31],
-        [94,31],[94,28],[90,28],[90,25],[93,25]],
-      [[-15,30],[-6,30],[-6,27],[2,27],[2,31],[8,31],[8,35],[14,35],
-        [14,40],[9,40],[9,43],[2,43],[2,46],[-5,46],[-5,42],[-12,42],[-12,38],[-15,38]],
-      [[33,26],[40,26],[40,23],[47,23],[47,27],[54,27],[54,31],[59,31],
-        [59,35],[64,35],[64,39],[58,39],[58,43],[51,43],[51,46],
-        [45,46],[45,42],[38,42],[38,38],[33,38],[33,33],[30,33],[30,29],[33,29]],
-      [[47,48],[54,48],[54,45],[60,45],[60,48],[65,48],[65,51],[59,51],
-        [59,55],[52,55],[52,58],[46,58],[46,54],[41,54],[41,51],[47,51]],
-      [[96,37],[102,37],[102,35],[108,35],[108,39],[113,39],[113,43],
-        [107,43],[107,46],[100,46],[100,43],[94,43],[94,40],[96,40]],
-      [[10,60],[17,60],[17,58],[23,58],[23,62],[29,62],[29,65],[23,65],
-        [23,68],[16,68],[16,65],[10,65]],
-    ];
-    for(const group of lightGroups)shape(group,P.flowerLight);
-    // Recognisable four-petal blossom marks, deliberately placed on lit ridges
-    // and hanging edges. These are accents, never a random fill.
-    for(const [bx,by]of [[2,-2],[14,4],[36,-1],[48,3],[69,8],[80,15],
-      [96,24],[-4,31],[5,36],[39,27],[51,32],[57,46],[47,51],
-      [100,38],[108,42],[16,60],[25,65]]) bloom(c,x+bx,y+by,true);
-    for(const [bx,by]of [[17,18],[55,16],[77,28],[110,31],[-7,53],
-      [21,44],[37,63],[70,54],[85,58],[12,72],[52,70]]) bloom(c,x+bx,y+by,false);
-    // Tiny exposed twigs support two edge flowers; they grow out of the crown.
-    rect(c,x+106,y+56,5,1,P.barkDark);rect(c,x+110,y+54,1,3,P.barkDark);
-    bloom(c,x+109,y+52,false);
+    // The full canopy is connected, including the thin hanging sprays. Fine
+    // asymmetric scallops replace the old 6–12 px rectangular staircase.
+    shape([[-30,-12],[44,-12],[44,-9],[49,-9],[49,-8],[54,-8],[54,-5],
+      [61,-5],[61,-3],[66,-3],[66,-1],[70,-1],[70,2],[76,2],[76,4],
+      [81,4],[81,6],[85,6],[85,8],[92,8],[92,10],[97,10],[97,13],
+      [101,13],[101,15],[106,15],[106,18],[111,18],[111,21],
+      [114,21],[114,24],[118,24],[118,27],[115,27],[115,30],
+      [120,30],[120,33],[124,33],[124,36],[127,36],[127,39],
+      [130,39],[130,42],[128,42],[128,45],[125,45],[125,48],
+      [121,48],[121,50],[117,50],[117,54],[114,54],[114,57],
+      [109,57],[109,59],[106,59],[106,63],[103,63],[103,61],
+      [99,61],[99,64],[95,64],[95,67],[91,67],[91,70],
+      [88,70],[88,67],[84,67],[84,71],[79,71],[79,74],
+      [75,74],[75,72],[71,72],[71,75],[65,75],[65,78],
+      [61,78],[61,76],[57,76],[57,80],[53,80],[53,83],
+      [49,83],[49,80],[45,80],[45,83],[41,83],[41,85],
+      [36,85],[36,81],[32,81],[32,83],[27,83],[27,81],
+      [23,81],[23,84],[19,84],[19,81],[15,81],[15,78],
+      [11,78],[11,80],[7,80],[7,77],[2,77],[2,75],
+      [-3,75],[-3,77],[-7,77],[-7,73],[-12,73],[-12,70],
+      [-16,70],[-16,72],[-21,72],[-21,68],[-30,68]],P.flowerDark);
+    // Shadow leaves follow the actual direction of the supporting limbs. The
+    // three broad light planes join smaller sprays, rather than outlining them.
+    shape([[-30,-12],[42,-12],[42,-8],[52,-8],[52,-4],[65,-4],[65,0],
+      [75,0],[75,5],[85,5],[85,9],[95,9],[95,13],[103,13],[103,17],
+      [110,17],[110,22],[115,22],[115,25],[110,25],[110,30],
+      [118,30],[118,34],[123,34],[123,38],[126,38],[126,42],
+      [122,42],[122,46],[117,46],[117,48],[112,48],[112,51],
+      [108,51],[108,55],[102,55],[102,58],[96,58],[96,61],
+      [90,61],[90,65],[84,65],[84,63],[78,63],[78,68],
+      [72,68],[72,70],[67,70],[67,73],[61,73],[61,70],
+      [56,70],[56,75],[49,75],[49,78],[42,78],[42,76],
+      [37,76],[37,79],[32,79],[32,76],[28,76],[28,78],
+      [21,78],[21,75],[16,75],[16,72],[12,72],[12,74],
+      [6,74],[6,70],[1,70],[1,67],[-5,67],[-5,70],
+      [-11,70],[-11,65],[-16,65],[-16,62],[-23,62],[-23,65],[-30,65]],P.flowerShade);
+    shape([[-28,-10],[40,-10],[40,-5],[50,-5],[50,-1],[61,-1],[61,3],
+      [69,3],[69,7],[77,7],[77,10],[85,10],[85,13],[91,13],
+      [91,17],[99,17],[99,20],[103,20],[103,23],[97,23],[97,26],
+      [90,26],[90,23],[84,23],[84,25],[78,25],[78,21],[72,21],
+      [72,18],[66,18],[66,20],[60,20],[60,16],[55,16],[55,13],
+      [49,13],[49,15],[44,15],[44,12],[38,12],[38,16],[31,16],
+      [31,20],[24,20],[24,17],[18,17],[18,20],[13,20],[13,23],
+      [6,23],[6,20],[1,20],[1,23],[-4,23],[-4,26],
+      [-11,26],[-11,23],[-17,23],[-17,27],[-24,27],[-24,23],[-28,23]],P.flower);
+    shape([[-29,33],[-22,33],[-22,29],[-14,29],[-14,26],[-8,26],
+      [-8,29],[-2,29],[-2,32],[3,32],[3,29],[9,29],[9,33],
+      [15,33],[15,36],[20,36],[20,40],[23,40],[23,44],[19,44],
+      [19,47],[14,47],[14,51],[8,51],[8,54],[1,54],[1,51],
+      [-5,51],[-5,54],[-11,54],[-11,57],[-17,57],[-17,53],
+      [-22,53],[-22,56],[-29,56]],P.flower);
+    shape([[29,29],[34,29],[34,25],[40,25],[40,22],[46,22],
+      [46,25],[52,25],[52,28],[58,28],[58,31],[64,31],
+      [64,34],[70,34],[70,37],[76,37],[76,40],[72,40],
+      [72,44],[67,44],[67,47],[62,47],[62,51],[58,51],
+      [58,54],[52,54],[52,59],[46,59],[46,62],[40,62],
+      [40,59],[34,59],[34,56],[29,56],[29,53],[24,53],
+      [24,49],[28,49],[28,45],[32,45],[32,40],[29,40],
+      [29,36],[25,36],[25,33],[29,33]],P.flower);
+    shape([[88,35],[93,35],[93,31],[99,31],[99,33],[105,33],
+      [105,35],[111,35],[111,38],[117,38],[117,41],[113,41],
+      [113,44],[109,44],[109,47],[103,47],[103,50],[98,50],
+      [98,53],[94,53],[94,50],[89,50],[89,47],[84,47],
+      [84,43],[81,43],[81,39],[88,39]],P.flower);
+    // An open bough divides the large left plume from the curved upper crown.
+    // It is painted as bark over shadow leaves; no clearing or cutout is used.
+    shape([[2,68],[13,62],[26,56],[35,51],[43,44],[47,36],
+      [48,28],[47,28],[44,37],[40,44],[31,50],[22,53],
+      [12,57],[0,62]],P.barkDark);
+    shape([[33,53],[47,51],[60,45],[73,40],[85,31],[89,24],
+      [87,25],[82,32],[71,36],[58,41],[44,47],[34,49]],P.barkDark);
+    shape([[61,70],[69,61],[79,57],[91,56],[99,51],[97,50],
+      [89,53],[78,54],[67,59],[58,68]],P.barkDark);
+    // Interlocking middle-value sprays give every plume a consistent fine
+    // grain. These placements follow the crown and hanging branches; no random
+    // speckling or scaled texture is used to fake blossom density.
+    for(const [sx,sy,kind]of [
+      [-28,-6,0],[-20,-10,1],[-12,-7,3],[-4,-10,2],[5,-8,0],[14,-9,3],
+      [23,-6,1],[31,-8,4],[39,-5,2],[47,-2,0],[55,1,3],
+      [-27,3,3],[-19,1,2],[-11,6,0],[-3,3,4],[5,7,1],[14,4,2],
+      [22,9,3],[30,5,0],[38,10,1],[46,7,2],[54,13,4],[63,9,1],
+      [-28,12,2],[-20,15,0],[-12,12,1],[-4,17,3],[4,14,4],[12,18,0],
+      [20,15,2],[28,20,4],[36,16,3],[44,22,0],[53,20,2],[61,18,4],
+      [69,15,3],[77,18,0],[85,21,2],[92,24,4],[99,23,1],
+      [-27,23,1],[-20,27,3],[-12,24,4],[-4,28,2],[4,25,0],[12,29,1],
+      [-28,36,2],[-20,32,0],[-12,37,1],[-4,34,3],[4,38,2],[12,35,4],
+      [-27,45,3],[-20,48,4],[-12,44,0],[-4,48,2],[4,45,1],[12,46,0],
+      [-23,55,1],[-15,57,4],[-7,54,2],[1,56,0],[9,55,3],[17,51,4],
+      [25,28,1],[33,24,4],[41,28,2],[49,26,0],[57,30,1],[65,31,3],
+      [23,37,2],[31,34,0],[39,38,3],[47,35,1],[55,39,2],[64,39,4],
+      [20,45,0],[28,43,4],[36,47,2],[44,44,3],[52,49,0],[59,46,4],
+      [24,53,1],[32,56,0],[40,52,3],[48,57,2],[55,56,4],
+      [4,64,3],[12,62,0],[20,66,2],[28,62,1],[35,64,4],[43,65,2],
+      [11,70,4],[20,73,2],[27,69,3],[35,73,0],[43,71,4],
+      [60,61,0],[68,56,2],[75,61,3],[83,57,4],[88,53,2],
+      [78,31,4],[85,35,0],[92,31,1],[100,34,3],[107,31,4],
+      [77,41,3],[84,45,2],[92,42,4],[100,45,1],[107,41,2],[113,36,0],
+    ])spray(c,x+sx,y+sy,kind,false);
+    // Individual sprays are explicitly composed along the lit edges of these
+    // branches. All patterns use the same native cells; none is upscaled.
+    for(const [sx,sy,kind]of [
+      [-20,-2,0],[-10,3,2],[0,1,1],[9,7,0],[17,2,3],[27,5,1],
+      [38,-3,0],[47,4,2],[55,8,1],[65,10,3],[74,13,4],[83,18,0],
+      [93,19,4],[100,24,2],[111,31,4],[116,37,3],
+      [-23,32,1],[-13,35,2],[-4,30,0],[3,35,1],[10,41,4],
+      [-18,45,3],[-8,45,4],[0,48,2],
+      [30,26,2],[39,27,3],[47,30,0],[56,34,1],[63,37,4],
+      [28,40,4],[37,43,3],[48,42,2],[53,48,4],[41,53,0],
+      [88,36,4],[96,34,2],[104,39,0],[90,44,1],
+      [9,62,0],[17,67,4],[25,62,2],[35,69,3],
+      [56,62,4],[64,58,2],[75,58,4],[83,60,3],
+    ])spray(c,x+sx,y+sy,kind,true);
+    // A handful of tiny blossom groups soften the shadow-facing silhouette.
+    for(const [sx,sy,kind]of [
+      [-19,57,4],[-7,60,3],[3,65,4],[13,73,0],[29,74,4],
+      [45,72,3],[55,68,4],[71,65,0],[91,55,4],[104,50,3],
+    ])spray(c,x+sx,y+sy,kind,false);
+    for(const [sx,sy,lit]of [[43,4,false],[78,16,true],[102,28,false],
+      [7,41,false],[49,47,false],[98,40,true],[66,63,false]])
+      blossom(c,x+sx,y+sy,lit);
+    // Cool moonward 1 px rims are selective: only a few outer-facing petal tips.
+    for(const [sx,sy,len]of [[85,14,2],[97,19,2],[108,25,1],
+      [118,34,2],[123,41,1],[114,47,2],[99,54,1],[85,63,2],
+      [69,67,2]])rect(c,x+sx,y+sy,len,1,P.flowerHigh);
   }
   function tree(c,w,h) {
     const portrait=w<=h, bank=Math.round(h*.84);
@@ -555,6 +693,21 @@ globalThis.NativeGarden = (() => {
     }
     canopy(c,portrait?-18:-7,portrait?-1:-15);
   }
+  // Only these four tiny hanging tips move. They are attached to the cached
+  // crown by 1 px twigs; the canopy, trunk and ground never translate as a block.
+  function wind(c,w,h,time=0) {
+    const x=w<=h?-18:-7,y=w<=h?-1:-15;
+    const weather=globalThis.PixelAmbient?.windAt?.(time);
+    const sway=weather?weather.sway:Math.sin(time*.8)*.7;
+    for(const [ax,ay,len,phase]of [[103,61,3,0],[75,72,4,1],[37,82,3,2],[8,77,4,3]]) {
+      const dx=Math.round(sway*(phase%2?.8:1));
+      rect(c,x+ax,y+ay,1,2,P.barkDark);
+      rect(c,x+ax+dx,y+ay+2,1,len-1,P.barkDark);
+      rect(c,x+ax+dx-1,y+ay+len,3,2,P.flowerShade);
+      rect(c,x+ax+dx,y+ay+len+2,2,1,P.flower);
+      rect(c,x+ax+dx+1,y+ay+len,1,1,P.flowerLight);
+    }
+  }
   function tuft(c,x,y,height=4,color=P.grassLight) {
     // All tuft geometry grows upward from an explicit ground anchor.
     poly(c,[[x-3,y],[x-4,y-2],[x-3,y-2],[x-2,y-1],[x-2,y-height],
@@ -576,7 +729,7 @@ globalThis.NativeGarden = (() => {
     poly(c,[[x-r+4,y-6],[x-6,y-10],[x+3,y-10],[x+r-4,y-6],[x+5,y-3],
       [x-2,y-4],[x-6,y-2],[x-r+3,y-2]],kind===0?P.stoneWarm:P.stoneLight);
     if(kind===0) {
-      poly(c,[[x-r+4,y-6],[x-6,y-10],[x-3,y-10],[x-7,y-6],[x-r+6,y-4]],P.amber);
+      poly(c,[[x-r+4,y-6],[x-6,y-10],[x-3,y-10],[x-7,y-6],[x-r+6,y-4]],P.stoneWarm);
       rect(c,x-r+2,y-1,3,1,P.stoneWarm);
     } else if(kind===1) {
       poly(c,[[x-r+4,y-6],[x-6,y-10],[x-2,y-10],[x-8,y-5],[x-r+3,y-2]],P.stoneWarm);
@@ -638,5 +791,49 @@ globalThis.NativeGarden = (() => {
       [w-11,h-6],[w-19,h-4]],P.grass);
     tuft(c,w-12,h-7,4,P.grass);
   }
-  return Object.freeze({tree,foreground,palette:P});
+  return Object.freeze({tree,foreground,wind,palette:P});
+})();
+
+/* Palette-aware lantern light. Coverage is dithered; colours remain opaque cells. */
+globalThis.NativeLighting = (() => {
+  'use strict';
+  const bayer=[[0,8,2,10],[12,4,14,6],[3,11,1,9],[15,7,13,5]];
+  const toRGB=hex=>[parseInt(hex.slice(1,3),16),parseInt(hex.slice(3,5),16),parseInt(hex.slice(5,7),16)];
+  const toKey=hex=>parseInt(hex.slice(1),16);
+  let cachedGarden=null,cachedLandscape=null,ramps;
+  function palette(){
+    const g=globalThis.NativeGarden.palette,l=globalThis.NativeLandscape.palette;
+    if(g===cachedGarden&&l===cachedLandscape)return ramps;
+    cachedGarden=g;cachedLandscape=l;ramps=new Map();
+    const add=(source,dim,light)=>ramps.set(toKey(source),[null,toRGB(dim),toRGB(light)]);
+    // Material shadows stay attached. Only facing colours advance in their ramp.
+    add(g.grassDark,g.grass,g.grassWarm);add(g.grass,g.grassWarm,g.grassLit);
+    add(g.grassLight,g.grassLit,g.grassLit);add(g.grassWarm,g.grassWarm,g.grassLit);
+    add(g.bark,g.barkWarm,g.barkWarm);add(g.barkLight,g.barkWarm,g.barkWarm);
+    add(g.stone,g.stoneWarm,g.stoneWarm);add(g.stoneLight,g.stoneWarm,g.stoneWarm);
+    add(l.water,'#324352','#555155');add(l.waterLight,'#555155',g.stoneWarm);
+    add(l.middleShade,'#324352','#555155');
+    return ramps;
+  }
+  function draw(ctx,w,h,time=0){
+    const x=39,y=Math.round(h*.84)-8,radius=30;
+    const left=Math.max(0,x-radius),top=Math.max(0,y-radius);
+    const width=Math.min(w-left,radius*2+1),height=Math.min(h-top,radius*2+1);
+    if(width<=0||height<=0)return;
+    const frame=ctx.getImageData(left,top,width,height),data=frame.data,colors=palette();
+    // A quiet three-state flame changes only a few edge cells of the light pool.
+    const flicker=[0,.06,0,-.04,0,.03][Math.floor(Math.max(0,time)*3)%6];
+    for(let yy=0;yy<height;yy++)for(let xx=0;xx<width;xx++){
+      const dx=left+xx-x,dy=(top+yy-y)*1.15,dist=Math.sqrt(dx*dx+dy*dy);
+      const energy=Math.max(0,1-dist/radius),strength=Math.min(2,energy*energy*(3.2+flicker));
+      const base=Math.floor(strength),fraction=strength-base;
+      const level=Math.min(2,base+(bayer[(top+yy)%4][(left+xx)%4]<fraction*16?1:0));
+      if(level===0)continue;
+      const offset=(yy*width+xx)*4,key=(data[offset]<<16)|(data[offset+1]<<8)|data[offset+2];
+      const color=colors.get(key)?.[level];if(!color)continue;
+      data[offset]=color[0];data[offset+1]=color[1];data[offset+2]=color[2];
+    }
+    ctx.putImageData(frame,left,top);
+  }
+  return Object.freeze({draw});
 })();

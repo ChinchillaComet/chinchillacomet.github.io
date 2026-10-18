@@ -16,7 +16,8 @@ const runtime=save('welcome','js',modules.map(name=>
   `/* ${name}.js */\n${fs.readFileSync(path.join(root,'src',name+'.js'),'utf8')}`).join('\n;\n'));
 const stylesheet=save('welcome','css',fs.readFileSync(path.join(root,'src/style.css'),'utf8'));
 const {stills,previews}=renderAssets(root);
-const release={version:5,runtime,stylesheet,stills,previews};
+const version=Number(JSON.parse(fs.readFileSync(path.join(root,'package.json'),'utf8')).version.split('.')[0]);
+const release={version,runtime,stylesheet,stills,previews};
 const replacements={runtime:runtime.path,stylesheet:stylesheet.path,
   landscape:stills.landscape.path,portrait:stills.portrait.path,panorama:stills.panorama.path,
   preview:previews.desktop.path};

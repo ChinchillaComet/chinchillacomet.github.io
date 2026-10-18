@@ -39,7 +39,7 @@
     const ambient=globalThis.PixelAmbient.create(width,height,{
       meteor:{start:[.88,.06],end:[portrait?.47:.52,portrait?.28:.30]},
       petalSources:portrait?[[.31,.12],[.45,.16]]:[[.20,.11],[.30,.15]],
-      petalCount:portrait?5:7,
+      petalCount:portrait?12:16,
       fireflyRegion:portrait?[.10,.76,.66,.94]:[.07,.79,.43,.94],fireflyCount:portrait?7:9,
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12},
     });
@@ -48,16 +48,19 @@
       context.imageSmoothingEnabled=false;
       context.drawImage(sky,0,0);
       if(options.motion!==false)for(const star of stars){
-        if(Math.sin(t*.5+star.phase)>.92)rect(context,star.x,star.y,1,1,P.moonShade);
+        if(Math.sin(t*.5+star.phase)>.92)rect(context,star.x,star.y,1,1,globalThis.NativeSky.palette.light);
       }
       if(options.motion!==false)ambient.drawMeteor(context,t);
       for(const cloud of clouds) {
-        const drift=Math.round(Math.sin(t*.06+cloud.phase)*3);
+        const wind=globalThis.PixelAmbient.windAt(t);
+        const drift=Math.round(Math.sin(t*.06+cloud.phase)*3+wind.sway);
         context.drawImage(cloud.bitmap,cloud.x+drift,cloud.y);
       }
       context.drawImage(ridge,0,0);
       globalThis.NativeLandscape.lake(context,width,height,horizon,t,moon.x);
       context.drawImage(garden,0,0);
+      globalThis.NativeGarden.wind?.(context,width,height,t);
+      globalThis.NativeLighting?.draw(context,width,height,t);
       if(options.motion!==false)ambient.drawPetals(context,t);
       ambient.drawFireflies(context,t);
       if(options.title!==false)context.drawImage(title,0,0);

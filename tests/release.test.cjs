@@ -127,3 +127,20 @@ test('the six legacy v4 JavaScript URLs retain their exact deployed Git blobs', 
     assert.equal(actual, expected, `${filename} serves cached v4 HTML; update src/${filename} instead`);
   }
 });
+
+const frozenV5 = {
+  "assets/releases/welcome.b7befe3a8cb4.js": "b7befe3a8cb40dadf9a1e1e080540a3013795e73aaf75fa5f45b8ce9cf299e73",
+  "assets/releases/welcome.732b7d13bac7.css": "732b7d13bac7d3f79089ab4e2d4c2604ab9dfad53b4f37b292e4585f2f196dfb",
+  "assets/releases/still-landscape.271a850c1ff3.png": "271a850c1ff3146b478b2f3cd7628c186165412bd41c6b689370a8dad2650847",
+  "assets/releases/still-portrait.999cd84d3afe.png": "999cd84d3afef3de3d19d8132dc1d3302742d64b617571412b311ae284723a0f",
+  "assets/releases/still-panorama.c849894b6117.png": "c849894b6117d91f2f6857cc0f6e96b28c8a7f6d7d3e8a10bf8239b24cfc40b7",
+  "assets/releases/preview-desktop.b26636391d16.png": "b26636391d16bc799d06604bee103f7c44db00e156404c3cd2935cce0e68709a",
+  "assets/releases/preview-phone.8370d08862af.png": "8370d08862afa5b1d6952e1787af27ec9342b08eb63eb21551d36c46fb18a2ed"
+};
+
+test('previously published v5 resource URLs retain their exact bytes for cached documents', () => {
+  for (const [relative, digest] of Object.entries(frozenV5)) {
+    const bytes = fs.readFileSync(path.join(ROOT, relative));
+    assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
+  }
+});

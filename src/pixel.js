@@ -2,8 +2,8 @@
  * display pixels. Resizing changes the composition, never the sprite grid. */
 (() => {
   'use strict';
-  const P = Object.freeze({ sky0: '#3d3757', ink: '#26243e', cream: '#fff1d8',
-    moonShade: '#ffddcd', star: '#bca1bb' });
+  const P = Object.freeze({ sky0: '#191c36', ink: '#1c1e31', cream: '#fff1d8',
+    moonShade: '#c0cddd', star: '#728fa9' });
   function rect(context, x, y, width, height, color) {
     context.fillStyle = color;
     context.fillRect(Math.round(x), Math.round(y), Math.round(width), Math.round(height));

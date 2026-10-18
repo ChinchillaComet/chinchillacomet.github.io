@@ -4,6 +4,22 @@
 
   const clamp = (value, low, high) => Math.max(low, Math.min(high, value));
   const wrap = (value, span) => ((value % span) + span) % span;
+  /**
+   * One breeze for the whole scene. The displacement is the exact integral of
+   * velocity, so a gust carries every petal instead of making sprites jump to
+   * unrelated positions. Sway is suitable for a one-native-pixel branch pose.
+   */
+  function windAt(time) {
+    const t = Number.isFinite(time) ? time : 0;
+    const phase = t * .32 - 1.3;
+    const gust = (Math.sin(phase) + 1) / 2;
+    return {
+      gust,
+      sway: Math.sin(t * .38) * .7 + Math.sin(t * .13 + .8) * .3,
+      velocity: .45 + gust * .9,
+      displacement: .9 * t - (.45 / .32) * Math.cos(phase),
+    };
+  }
   function random(seed) {
     return () => {
       seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -61,31 +77,38 @@
   }
 
   const meteorColors = Object.freeze({
-    head: ['#aa89ba', '#efb4c4', '#ffddcd', '#fff1d8'],
-    trail: ['#ffddcd', '#efb4c4', '#d49cbd', '#aa89ba'],
+    head: ['#504563', '#ad859e', '#c0cddd', '#e8eeee'],
+    trail: ['#c0cddd', '#ad859e', '#79637f', '#504563'],
   });
 
   function drawMeteor(context, geometry, colors = meteorColors) {
     if (!geometry) return;
     const { head, trail, level } = geometry;
     const dim = 3 - level;
-    // Tail first; its brightest and widest point is immediately behind the head.
+    // A two-cell shoulder narrows into a one-cell taper. All tail segments are
+    // historical head positions; the bright leading point is always down-left.
+    // Paint the shoulder first so the hot centre line stays continuous.
+    if (level >= 2) {
+      for (let index = Math.min(2, trail.length - 1); index > 0; index--) {
+        const from = trail[index], to = trail[index - 1];
+        line(context, from.x, from.y + 1, to.x, to.y + 1,
+          colors.trail[Math.min(2, 1 + dim)]);
+      }
+    }
     for (let index = trail.length - 1; index > 0; index--) {
       const from = trail[index], to = trail[index - 1];
       const tone = Math.min(colors.trail.length - 1,
         Math.floor((index - 1) * colors.trail.length / (trail.length - 1)) + dim);
       line(context, from.x, from.y, to.x, to.y, colors.trail[tone]);
     }
-    if (level >= 2) {
-      pixel(context, head.x + 1, head.y, colors.trail[0]);
-      pixel(context, head.x, head.y - 1, colors.trail[0]);
-    }
+    // The head is a compact wedge, not a cross-shaped sparkle or a round glow.
+    if (level >= 2) pixel(context, head.x + 1, head.y, colors.trail[0]);
     pixel(context, head.x, head.y, colors.head[level]);
   }
 
   const particleColors = Object.freeze({
-    petal: ['#a45c86', '#c87a9b', '#efb4c4'],
-    firefly: ['#9b9b81', '#edb781', '#ffddcd', '#fff1d8'],
+    petal: ['#865271', '#a36c8d', '#dab5cc'],
+    firefly: ['#8b7566', '#ecb779', '#fff1d8', '#fff1d8'],
   });
 
   /**
@@ -97,16 +120,22 @@
     const rng = random(options.seed ?? 84071);
     const sources = options.petalSources ?? [[.15, .22], [.86, .17]];
     const flyRegion = options.fireflyRegion ?? [.12, .76, .88, .94];
-    const petals = Array.from({ length: options.petalCount ?? 11 }, (_, index) => {
+    const petals = Array.from({ length: options.petalCount ?? (width <= height ? 10 : 16) }, (_, index) => {
       const source = sources[index % sources.length];
-      const fall = 1.3 + rng() * 1.8;
-      const life = (height * (1.05 - source[1])) / fall;
+      const fall = 1.7 + rng() * 1.55;
+      const x = (source[0] + (rng() - .5) * .12) * width;
+      const y = source[1] * height + (rng() - .5) * 5;
+      const drift = .6 + rng() * .45;
+      // Respawn in the canopy after reaching a screen edge. The small margin
+      // admits the full fluttering sprite before it is recycled.
+      const life = Math.min((height + 4 - y) / fall, (width + 4 - x) / (.9 * drift));
       return {
-        x: (source[0] + (rng() - .5) * .10) * width,
-        y: source[1] * height,
-        phase: rng() * life, life, fall,
-        wind: source[0] > .75 ? -.35 - rng() * .55 : .35 + rng() * .65,
-        sway: rng() * Math.PI * 2,
+        x, y, life, fall, drift,
+        // Stratifying ages keeps a few petals near the branches as well as
+        // farther across the lake, including on the very first moving frame.
+        phase: ((index + rng() * .65) / (options.petalCount ?? (width <= height ? 10 : 16))) * life,
+        sway: rng() * Math.PI * 2, turn: .95 + rng() * .55,
+        lift: 1.5 + rng() * 1.5,
       };
     });
     const flyLocations=[[.08,.35],[.25,.65],[.42,.1],[.60,.51],[.79,.22],
@@ -114,18 +143,23 @@
     const fireflies = Array.from({ length: options.fireflyCount ?? 7 }, (_,i) => ({
       x: (flyRegion[0] + flyLocations[i%flyLocations.length][0] * (flyRegion[2] - flyRegion[0])) * width,
       y: (flyRegion[1] + flyLocations[i%flyLocations.length][1] * (flyRegion[3] - flyRegion[1])) * height,
-      phase: i * 1.7, cycle: 6 + (i%3)*.7,
+      phase: i * 1.7, cycle: 6 + (i%3)*.7, glint: i % 4,
     }));
     const excluded = (x, y) => {
       const box = options.exclude;
-      return box && x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
+      return box && x + 1 >= box.x && x - 1 <= box.x + box.width
+        && y + 1 >= box.y && y - 1 <= box.y + box.height;
     };
     function particlesAt(time) {
+      const wind = windAt(time);
       const petalFrame = petals.map(petal => {
         const age = wrap(time + petal.phase, petal.life);
-        const x = Math.round(petal.x + petal.wind * age + Math.sin(age * .55 + petal.sway) * 2);
-        const y = Math.round(petal.y + petal.fall * age);
-        return { x, y, frame: Math.floor(age * 1.3 + petal.sway) % 4 };
+        const travel = wind.displacement - windAt(time - age).displacement;
+        const flutter = Math.sin(age * .78 + petal.sway);
+        const x = Math.round(petal.x + travel * petal.drift + flutter * (1.5 + wind.gust));
+        const y = Math.round(petal.y + petal.fall * age
+          + Math.sin(age * .6 + petal.sway) * (1.3 + wind.gust * 1.4) - wind.gust * petal.lift);
+        return { x, y, frame: wrap(Math.floor(age * petal.turn + petal.sway), 8) };
       }).filter(petal => petal.x >= -2 && petal.x < width + 2 && petal.y < height + 2 && !excluded(petal.x, petal.y));
       const flyFrame = fireflies.map(fly => {
         const phase = wrap(time + fly.phase, fly.cycle) / fly.cycle;
@@ -133,7 +167,7 @@
         return {
           x: Math.round(fly.x + Math.sin(time * .31 + fly.phase) * 2),
           y: Math.round(fly.y + Math.sin(time * .27 + fly.phase) * 2),
-          level: Math.min(3, Math.floor(pulse * 4)),
+          level: Math.min(3, Math.floor(pulse * 4)), glint: fly.glint,
         };
       }).filter(fly => fly.level >= 0 && !excluded(fly.x, fly.y));
       return { petals: petalFrame, fireflies: flyFrame };
@@ -141,24 +175,26 @@
     function drawPetals(context, time, colors = particleColors) {
       const frame = particlesAt(time);
       for (const petal of frame.petals) {
-        pixel(context, petal.x, petal.y, colors.petal[1]);
-        if (petal.frame === 1 || petal.frame === 2) pixel(context, petal.x + 1, petal.y, colors.petal[2]);
-        if (petal.frame === 2) pixel(context, petal.x, petal.y + 1, colors.petal[0]);
+        const { x, y, frame: pose } = petal;
+        pixel(context, x, y, colors.petal[pose === 4 ? 0 : 1]);
+        // Eight sparse poses suggest a curled petal turning through the light.
+        // Each mark occupies one native cell; no sprite is scaled or rotated.
+        if (pose === 1 || pose === 2) pixel(context, x + 1, y, colors.petal[2]);
+        if (pose === 2) pixel(context, x, y + 1, colors.petal[0]);
+        if (pose === 3) pixel(context, x, y + 1, colors.petal[2]);
+        if (pose === 5 || pose === 6) pixel(context, x - 1, y, colors.petal[2]);
+        if (pose === 6) pixel(context, x, y - 1, colors.petal[0]);
+        if (pose === 7) pixel(context, x, y - 1, colors.petal[2]);
       }
     }
     function drawFireflies(context,time,colors=particleColors){
       for(const fly of particlesAt(time).fireflies){
-        // A small stepped glow. At least the core remains visible between pulses.
-        if(fly.level>=2){
-          pixel(context,fly.x-1,fly.y,colors.firefly[0],3,1);
-          pixel(context,fly.x,fly.y-1,colors.firefly[0],1,3);
-        }
-        if(fly.level===3){
-          pixel(context,fly.x-2,fly.y,colors.firefly[0]);
-          pixel(context,fly.x+2,fly.y,colors.firefly[0]);
-          pixel(context,fly.x,fly.y-1,colors.firefly[1],1,3);
-          pixel(context,fly.x-1,fly.y,colors.firefly[1],3,1);
-        }
+        // Three cells at the peak, one between pulses. The two dimmer rim cells
+        // form a little warm cluster, avoiding oversized plus-shaped lights.
+        const side = fly.glint % 2 ? 1 : -1;
+        const vertical = fly.glint < 2 ? 1 : -1;
+        if(fly.level>=2) pixel(context,fly.x+side,fly.y,colors.firefly[0]);
+        if(fly.level===3) pixel(context,fly.x,fly.y+vertical,colors.firefly[1]);
         pixel(context,fly.x,fly.y,colors.firefly[fly.level]);
       }
     }
@@ -167,11 +203,12 @@
       meteorAt: time => meteorAt(time, width, height, options.meteor),
       drawMeteor: (context, time, colors) => drawMeteor(context, meteorAt(time, width, height, options.meteor), colors),
       particlesAt, drawParticles, drawPetals, drawFireflies,
+      windAt,
     });
   }
 
   globalThis.PixelAmbient = Object.freeze({
-    create, meteorAt, drawMeteor,
+    create, meteorAt, drawMeteor, windAt,
     meteorDefaults, meteorColors, particleColors,
   });
 })();

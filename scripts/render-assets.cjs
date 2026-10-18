@@ -22,7 +22,8 @@ module.exports=function renderAssets(root){
   }
   for(const [id,width,height]of [['desktop',360,225],['phone',195,422]]){
     const scene=scope.PixelScene.create(width,height,createCanvas),frame=createCanvas(width,height);
-    scene.draw(frame.getContext('2d'),0,{motion:false});
+    // Social previews show one representative native animation frame.
+    scene.draw(frame.getContext('2d'),8.3,{motion:true});
     const output=createCanvas(width*2,height*2),ctx=output.getContext('2d');
     ctx.imageSmoothingEnabled=false;ctx.drawImage(frame,0,0,output.width,output.height);
     previews[id]=save('preview-'+id,output);

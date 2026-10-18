@@ -23,7 +23,8 @@ decoding is involved.
 `release.test.cjs` checks the published document's resource references and the
 content hashes in `assets/release.json`. It verifies that the single deferred
 bundle contains the source modules in dependency order and that the frozen
-revision 4 scripts retain their original Git blob hashes. Keep those legacy
+revision 4 scripts retain their original Git blob hashes and all v5 release
+resources retain their exact published bytes. Keep those legacy
 files and previously published fingerprinted assets for cached older documents.
 
 These checks establish rendering and packaging behavior, not artistic quality
