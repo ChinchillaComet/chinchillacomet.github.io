@@ -34,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 12 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 13 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -110,6 +110,8 @@ for the tail base and coarse brush. These are observation references for an
 original sprite; no zoo photograph is included in the site.
 
 The head is supported above the chest, with a broad cheek and blunt muzzle.
+Three heavy projecting whisker strokes have been removed to keep the small
+face contour readable without stray grey tabs at the page's native scale.
 The near ear has an asymmetric cup: the dark canal is toward the muzzle at its
 lower-left base, and the rear rim catches the moonlight. The far ear mainly
 shows the grey back of its pinna, partly hidden by the crown. Two short arms
@@ -121,22 +123,29 @@ occlusion beneath the chin and arms. Grey planes continue from the shoulder
 into the flank and upper haunch under one cool upper-left light direction.
 
 The tail attaches behind the lower rump, above the heels, with its first cells
-hidden by the body. A narrow root opens into a broader coarse brush. Seven
-authored silhouettes change the proximal angle, middle curve, and terminal
-brush, with follow-through and a smaller settling flick. Only the tucked
-attachment stays fixed; the tail's full volume moves without resampling or
-clipping. The motion is an authored interpretation of a twitch, rather than
-a traced biological motion study. The body and both feet stay planted. The
+hidden by the body. A narrow shaded root opens into a darker coarse brush.
+Unequal tapered fur locks break its outer contour, while two short light
+groups describe the inner plane without making a continuous pale stripe.
+Nine authored cels retain those same fur locks through one small flick:
+the proximal curve leads, the loose tip follows, and a smaller settling
+movement relaxes into rest. The final cel returns the root and middle to
+their resting curve while the terminal fur finishes settling. Only the
+tucked attachment stays fixed; the tail moves without resampling or clipping.
+The motion is an authored interpretation, not a traced biological motion
+study. The body and both feet stay planted. The
 bank supplies continuous soil and a grass margin beneath both complete soles
 and their contact shadow. The character remains clear of the bottom caption.
 
-`artwork/chinchilla-v12.json` retains the authored body layers, their draw order,
-seven complete tail cels, palette, anatomy anchors, and timing. The rendered
+`artwork/chinchilla-v13.json` retains the authored body layers, their draw order,
+nine complete tail cels, palette, anatomy anchors, and timing. The previous
+revision's checkpoint remains unchanged. The rendered
 body and cels in `src/art.js` are the production artwork. This layer checkpoint
 keeps later adjustments to the ears or limbs separable and reviewable. The
 versioned GIF in `assets/reviews/` is a close-up of the same body and tail at
 4× integer enlargement. It shortens only the idle intervals for review; the
-page uses a 1.22-second twitch after 10.1 seconds in each 16.8-second cycle.
+page uses a one-second flick after 10.1 seconds in each 16.8-second cycle.
+Every action cel is held for at least two frames at the scene's 24 FPS cap;
+the resting cel is not inserted between phases of the gesture.
 
 ## Display grid and type
 

@@ -1,9 +1,9 @@
 {
-  "version": 12,
+  "version": 13,
   "runtime": {
-    "path": "assets/releases/welcome.c173b93f7582.js",
-    "sha256": "c173b93f7582d47cbe3c6931cd78ee541632024775da4be1701ad36431ba7763",
-    "bytes": 137213
+    "path": "assets/releases/welcome.bb0fa7b19d6c.js",
+    "sha256": "bb0fa7b19d6cdef5111249b0147d4e8e0535135a4c69732c41975e4298d0a305",
+    "bytes": 143910
   },
   "stylesheet": {
     "path": "assets/releases/welcome.702adb74aeb5.css",
@@ -12,41 +12,41 @@
   },
   "stills": {
     "landscape": {
-      "path": "assets/releases/still-landscape.fe3cf932cacc.png",
-      "sha256": "fe3cf932caccd54beab9463ebd90a1d82d1b9ec363411b5ac1d80e6fa80a35c4",
+      "path": "assets/releases/still-landscape.6aa07f1bb20d.png",
+      "sha256": "6aa07f1bb20d17931d28190f62a79ab36e0297e2ea436c0b32795c2d89eb7fc3",
       "width": 360,
       "height": 225,
-      "bytes": 14811
+      "bytes": 14826
     },
     "portrait": {
-      "path": "assets/releases/still-portrait.83cd72b64706.png",
-      "sha256": "83cd72b647069d5b1115ba270eff4664c39ee48142893ed0fabca6a63b9ce653",
+      "path": "assets/releases/still-portrait.d04256978881.png",
+      "sha256": "d042569788817b553bd2a7e08e8c285f2432158ecee31f625d21ddb6e9447b5a",
       "width": 195,
       "height": 422,
-      "bytes": 14648
+      "bytes": 14651
     },
     "panorama": {
-      "path": "assets/releases/still-panorama.79da162f5e0f.png",
-      "sha256": "79da162f5e0f01673356d7193a72d2988735d3a9fb270d8d235e306c9e72d130",
+      "path": "assets/releases/still-panorama.44a3bff0894f.png",
+      "sha256": "44a3bff0894f61770e6c9dd05ec990e11cafdc0e7beabe16e802272e54e0d658",
       "width": 480,
       "height": 204,
-      "bytes": 15515
+      "bytes": 15686
     }
   },
   "previews": {
     "desktop": {
-      "path": "assets/releases/preview-desktop.bc0eebe18d12.png",
-      "sha256": "bc0eebe18d124500c597a32796fd9ada63c78c3e1cbe4dca43ed8d9ad61d1ec4",
+      "path": "assets/releases/preview-desktop.e87312522c17.png",
+      "sha256": "e87312522c17d3afa879ae03f11da1a78ddfbeb4a7b2a6b63ea6b920f66fe22b",
       "width": 720,
       "height": 450,
-      "bytes": 19868
+      "bytes": 19832
     },
     "phone": {
-      "path": "assets/releases/preview-phone.a0a573a5cc8e.png",
-      "sha256": "a0a573a5cc8e51cfdef3720afc82dd50fdc457356d1ad65eca6ff1c4701cab3d",
+      "path": "assets/releases/preview-phone.67caa73a41c0.png",
+      "sha256": "67caa73a41c0096ae19310104a60b592c504fd9c1440aa6c9ca732cdcfe14f03",
       "width": 390,
       "height": 844,
-      "bytes": 19000
+      "bytes": 19026
     }
   }
 }

@@ -246,3 +246,22 @@ test('previously published v11 resource URLs retain their exact bytes for cached
     assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
   }
 });
+
+const frozenV12 = {
+  "assets/releases/welcome.c173b93f7582.js": "c173b93f7582d47cbe3c6931cd78ee541632024775da4be1701ad36431ba7763",
+  "assets/releases/welcome.702adb74aeb5.css": "702adb74aeb56b1b00589ed90be15c276d1a5e818dcdbc45cf02690cb725caa6",
+  "assets/releases/still-landscape.fe3cf932cacc.png": "fe3cf932caccd54beab9463ebd90a1d82d1b9ec363411b5ac1d80e6fa80a35c4",
+  "assets/releases/still-portrait.83cd72b64706.png": "83cd72b647069d5b1115ba270eff4664c39ee48142893ed0fabca6a63b9ce653",
+  "assets/releases/still-panorama.79da162f5e0f.png": "79da162f5e0f01673356d7193a72d2988735d3a9fb270d8d235e306c9e72d130",
+  "assets/releases/preview-desktop.bc0eebe18d12.png": "bc0eebe18d124500c597a32796fd9ada63c78c3e1cbe4dca43ed8d9ad61d1ec4",
+  "assets/releases/preview-phone.a0a573a5cc8e.png": "a0a573a5cc8e51cfdef3720afc82dd50fdc457356d1ad65eca6ff1c4701cab3d",
+  "artwork/chinchilla-v12.json": "194575dbd2a07d0d31111fa6af75e3f4ba28c91b2b17bc12d1c39790967362e7",
+  "assets/reviews/chinchilla-v12.9236e0623672.gif": "9236e0623672dd08ae363ce020b75bf1eea215250c09e62d5ac3268d3d278698"
+};
+
+test('previously published v12 resources and review assets retain their exact bytes', () => {
+  for (const [relative, digest] of Object.entries(frozenV12)) {
+    const bytes = fs.readFileSync(path.join(ROOT, relative));
+    assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
+  }
+});
