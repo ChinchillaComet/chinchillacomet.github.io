@@ -42,24 +42,25 @@ function silhouette(cloud) {
     top: cloud.y + top, bottom: cloud.y + bottom };
 }
 
-function assertSpacing(stream, time) {
-  const boxes = Array.from(stream.cloudsAt(time), silhouette);
-  const visible = boxes.filter(box => box.right >= 0 && box.left < stream.width
-    && box.bottom >= 0 && box.top < stream.height).sort((a, b) => a.left - b.left);
-  for (let i = 1; i < visible.length; i++) {
-    const gap = visible[i].left - visible[i - 1].right - 1;
-    assert.ok(gap >= 20,
-      `${stream.width}x${stream.height} at ${time}s: clouds need clear sky between them (${gap}px)`);
+function assertLayering(stream, time) {
+  const clouds = stream.cloudsAt(time);
+  assert.deepEqual(Array.from(clouds, cloud => cloud.depth), [0, 1, 2],
+    'the cloud frame must retain its back-to-front drawing order');
+  const boxes = Array.from(clouds, cloud => ({ ...silhouette(cloud), plane: cloud.plane }));
+  const near = boxes.filter(box => box.plane !== 'rear').sort((a, b) => a.left - b.left);
+  assert.equal(near.length, 2);
+  const gap = near[1].left - near[0].right - 1;
+  assert.ok(gap >= 20,
+    `${stream.width}x${stream.height} at ${time}s: nearer clouds must not catch each other (${gap}px)`);
+  const rear = boxes.find(box => box.plane === 'rear');
+  assert.ok(rear, 'the slower cloud must retain a separate rear plane');
+  if (stream.height >= 128) for (const front of near) {
+    const separation = Math.abs((rear.top + rear.bottom - front.top - front.bottom) / 2);
+    assert.ok(separation >= 13,
+      'an allowed overlap needs enough vertical offset to keep its two silhouettes readable');
   }
-  // Normal responsive layouts have enough vertical space for distinct rows.
-  // Check the actual visual centres, including differently-heighted variants.
-  if (stream.height >= 128) for (let i = 0; i < boxes.length; i++) {
-    for (let j = i + 1; j < boxes.length; j++) {
-      const separation = Math.abs((boxes[i].top + boxes[i].bottom
-        - boxes[j].top - boxes[j].bottom) / 2);
-      assert.ok(separation >= 5, 'cloud centres must keep their staggered sky rows');
-    }
-  }
+  assert.ok(Math.max(...boxes.map(box => box.left)) > Math.min(...boxes.map(box => box.right)),
+    'all three clouds must never stack over the same horizontal position');
 }
 
 test('cloud variation is reproducible from the seed without depending on frame order', () => {
@@ -89,7 +90,7 @@ test('responsive clouds move slowly leftward on whole native pixels and clear th
     // assuming a particular starting x-coordinate, lane speed, or sprite size.
     for (let time = 0; time < 14400; time += 17) {
       const before = stream.cloudsAt(time), after = stream.cloudsAt(time + 30);
-      assert.equal(before.length, 3, 'the peaceful sky uses three staggered cloud slots');
+      assert.equal(before.length, 3, 'the peaceful sky uses three clouds on ordered depth planes');
       for (let index = 0; index < before.length; index++) {
         const a = before[index], b = after[index];
         for (const cloud of [a, b]) {
@@ -112,14 +113,41 @@ test('responsive clouds move slowly leftward on whole native pixels and clear th
   }
 });
 
-test('cloud silhouettes keep a clear gap through long sessions, variants, and resized layouts', () => {
+test('cloud speeds vary gently over time and differ between the visible layers', () => {
+  const stream = motion.create(360, 225, createCanvas);
+  const distances = new Map(), simultaneousDifferences = [];
+  for (let time = 0; time < 3000; time += 29) {
+    const before = stream.cloudsAt(time), after = stream.cloudsAt(time + 30);
+    const measured = [];
+    for (let index = 0; index < before.length; index++) {
+      const a = before[index], b = after[index];
+      if (a.cycle !== b.cycle) continue;
+      const travel = a.x - b.x;
+      if (!distances.has(a.id)) distances.set(a.id, []);
+      distances.get(a.id).push(travel);
+      measured.push(travel);
+    }
+    if (measured.length === before.length) {
+      simultaneousDifferences.push(Math.max(...measured) - Math.min(...measured));
+    }
+  }
+  assert.equal(distances.size, 3);
+  for (const values of distances.values()) {
+    assert.ok(Math.max(...values) - Math.min(...values) >= 2,
+      'each cloud should visibly change speed across its gentle wind cycle');
+  }
+  assert.ok(simultaneousDifferences.some(difference => difference >= 3),
+    'the different cloud layers must not all travel at one shared speed');
+});
+
+test('intentional rear overlaps remain staggered while nearer clouds stay apart through long sessions', () => {
   const responsive = [...layouts, [160, 284], [185, 350], [256, 144], [720, 225]];
   for (const [width, height] of responsive) for (const seed of [0, 71, 207, 0xffffffff]) {
     const stream = motion.create(width, height, createCanvas, { seed });
-    // Two days of irregular samples catch the gradual catch-up seen with
-    // independent speeds; later direct seeks exercise many more variants.
-    for (let time = 0; time < 172800; time += 97.375) assertSpacing(stream, time);
-    for (const time of [604800.125, 31536000.75]) assertSpacing(stream, time);
+    // Long samples catch accumulated catch-up, while direct seeks exercise
+    // variant changes without relying on earlier animation frames.
+    for (let time = 0; time < 172800; time += 97.375) assertLayering(stream, time);
+    for (const time of [604800.125, 31536000.75]) assertLayering(stream, time);
   }
 });
 
@@ -143,7 +171,7 @@ test('loop replacements occur fully beyond both viewport edges and all four form
         assert.equal(before.visible, false);
         assert.equal(after.visible, false);
         for (const time of [boundary - 1 / 24, boundary + 1 / 24]) {
-          assertSpacing(stream, time);
+          assertLayering(stream, time);
         }
         const entered = stream.cloudsAt(boundary + after.cycleDuration / 4)[lane];
         assert.equal(entered.cycle, after.cycle);
@@ -158,9 +186,50 @@ test('loop replacements occur fully beyond both viewport edges and all four form
   }
 });
 
+test('actual overlapping cells retain the nearer cloud colour and a quieter rear palette', () => {
+  const luminance = colour => {
+    const rgb = colour.match(/[a-f\d]{2}/gi).map(channel => parseInt(channel, 16));
+    return rgb[0] * .2126 + rgb[1] * .7152 + rgb[2] * .0722;
+  };
+  for (const symbol of ['s', 'b', 'l', 'r']) {
+    assert.ok(luminance(motion.palettes.rear[symbol]) < luminance(motion.palettes.middle[symbol]));
+    assert.ok(luminance(motion.palettes.middle[symbol]) < luminance(motion.palettes.front[symbol]));
+  }
+  const witnessed = new Set();
+  for (const [width, height] of layouts) {
+    const stream = motion.create(width, height, createCanvas);
+    for (let time = 0; time < 21600; time += 19) {
+      const clouds = stream.cloudsAt(time), rear = clouds.find(cloud => cloud.plane === 'rear');
+      for (const nearer of clouds.filter(cloud => cloud.plane !== 'rear')) {
+        if (witnessed.has(nearer.plane)) continue;
+        const backRows = sprites[rear.name].rows, frontRows = sprites[nearer.name].rows;
+        const left = Math.max(0, rear.x, nearer.x), right = Math.min(width, rear.x + rear.width, nearer.x + nearer.width);
+        const top = Math.max(0, rear.y, nearer.y), bottom = Math.min(height, rear.y + rear.height, nearer.y + nearer.height);
+        let rendered;
+        for (let y = top; y < bottom; y++) for (let x = left; x < right; x++) {
+          const back = rear.palette[backRows[y - rear.y][x - rear.x]];
+          const front = nearer.palette[frontRows[y - nearer.y][x - nearer.x]];
+          if (!back || !front || back === front) continue;
+          rendered ??= frame(stream, time);
+          const expected = [...front.match(/[a-f\d]{2}/gi).map(value => parseInt(value, 16)), 255];
+          const offset = (y * width + x) * 4;
+          assert.deepEqual(Array.from(rendered.subarray(offset, offset + 4)), expected,
+            'a nearer opaque cell must cover the rear cloud without blending or reversed drawing order');
+          witnessed.add(nearer.plane);
+        }
+      }
+      if (witnessed.size === 2) break;
+    }
+    if (witnessed.size === 2) break;
+  }
+  assert.deepEqual([...witnessed].sort(), ['front', 'middle'],
+    'the rear cloud should actually pass behind both nearer cloud planes');
+});
+
 test('fractional-time cloud renders preserve opaque palette cells without smoothing', () => {
-  const palette = new Set(Object.values(sprites).flatMap(sprite =>
-    Object.values(sprite.palette).filter(Boolean).map(colour => colour.toLowerCase())));
+  const palette = new Set([...Object.values(sprites).map(sprite => sprite.palette),
+    ...Object.values(motion.palettes)].flatMap(values =>
+    Object.values(values).filter(Boolean).map(colour => colour.toLowerCase())));
   for (const [width, height] of layouts) {
     const stream = motion.create(width, height, createCanvas);
     for (const time of [0, 31.125, 721.875, 3100.33]) {

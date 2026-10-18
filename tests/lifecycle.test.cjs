@@ -10,12 +10,28 @@ test('startup renders directly and hides the fallback only after the first succe
   assert.equal(page.draws.length, 1, 'Startup needs one complete native scene render');
   assert.equal(page.copies.length, 1);
   assert.equal(page.copies[0].readyBeforeCopy, false);
+  assert.equal(page.captionCopies.length, 1);
+  assert.equal(page.captionCopies[0].readyBeforeCopy, false);
   assert.ok(page.ready());
   assert.equal(page.raf.size, 1);
   for (let i = 0; i < 10; i++) {
     page.visibility(false); page.motion(false);
     assert.equal(page.raf.size, 1, 'Repeated state notifications must not duplicate the animation loop');
   }
+});
+
+test('a failed caption copy keeps fallback visible until the complete frame can be painted', () => {
+  const page = makePage({ failCaption: true });
+  assert.equal(page.ready(), false);
+  assert.equal(page.copies.length, 1, 'The scene copy alone is not a complete display frame');
+  assert.equal(page.captionCopies.length, 0);
+  page.frame(50);
+  assert.equal(page.raf.size, 0, 'Caption failures use the same bounded recovery as scene failures');
+  page.setFault('caption', false);
+  page.pageshow();
+  assert.ok(page.ready());
+  assert.equal(page.captionCopies.at(-1).readyBeforeCopy, false);
+  assert.equal(page.raf.size, 1);
 });
 
 test('unavailable canvas or scene support leaves the static fallback intact', () => {

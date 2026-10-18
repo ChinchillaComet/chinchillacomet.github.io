@@ -14,7 +14,7 @@ creates `index.html`, `assets/release.json`, and content-fingerprinted files in
 `assets/releases/`.
 
 The page loads one deferred JavaScript bundle containing its dependencies in
-order: pixel grid, typography, ambient motion, artwork, scene, and lifecycle.
+order: pixel grid, typography, small caption, ambient motion, artwork, scene, and lifecycle.
 CSS, fallback pictures, and previews also have content hashes in their names.
 A resource URL therefore identifies one complete set of bytes. The manifest
 records each resource's SHA-256 digest; it is used for verification and is not
@@ -34,7 +34,7 @@ periodic cache-busting request.
 
 ## Native artwork
 
-Revision 8 uses a small, code-native pixel scene. `src/art.js` contains fixed
+Revision 9 uses a small, code-native pixel scene. `src/art.js` contains fixed
 cloud bitmaps, authored contours, connected light and shadow shapes, and
 foreground sprites. Integer scanlines and `fillRect` draw opaque marks directly
 on the native grid. There are no antialiased paths, smooth gradients, blur,
@@ -62,27 +62,35 @@ a dithered falloff. It advances each material along deliberate warm colour
 ramps, retains opaque pixels and object shadows, and flickers with the flame.
 It does not draw a blurred or translucent light image over the scene.
 
-Three mountain layers and a far-shore pavilion give the lake depth. The
-pavilion has a lit window and a short reflection. Moonlight opens toward the
+Three mountain layers, a layered conifer grove on the far left shore, and a
+far-shore pavilion give the lake depth. The grove uses varied stepped branch
+silhouettes in subdued blue and teal. The pavilion has a lit window and a short reflection. Moonlight opens toward the
 viewer in asymmetric horizontal pools, broken by dark water and smaller cool
 glints. These planes have fixed native heights, including on portrait screens.
-Three lily-pad groups, an open lotus, and a smaller bud remain in open water.
+Five lily-pad groups include two open lotus flowers, two buds, and a leaf-only
+cluster. The smaller distant additions flank the moonlight path. Their positions
+are shared by the artwork and firefly habitat through `waterPlants`. Pad bodies
+are painted after lantern reflections so reflected light cannot erase a leaf.
 Three shore lights sit below the mountains, while three small paper lanterns
 hover at staggered heights above the lake. The airborne lanterns use authored
-paper forms in two sizes, with sparse, precomputed native-pixel halos.
+paper forms in two sizes, with clean connected silhouettes. Warm folds, a
+narrow lower rim, and a small inner flame describe the glow entirely inside
+the lantern; there are no detached grey halo cells.
 Their broken reflections follow the light centres across the water, mirrored
 about the horizon and gently displaced by the same small ripples.
 
 Fireflies have independent lime-gold light ramps, persistent cores, and compact
 connected glows: three by three pixels, briefly extending to five by three at
 their brightest. Petals remain rose-coloured. Firefly birth positions reserve
-their entire hovering glow footprint around both the heading and hearth;
-the insects keep a stable count instead of disappearing at an exclusion edge.
-Both page labels have protected space for the complete particle shapes.
+their entire hovering glow footprint around both labels, the hearth, and the
+chinchilla. Seven portrait or nine landscape fireflies hover above and beside
+the lotus and lily pads. The insects keep a stable count instead of disappearing
+at an exclusion edge.
 
 A small chinchilla sits on the enlarged right bank, facing across the lake.
-Its rounded ears, soft grey body, little paws and curved fluffy tail are authored
-native-cell sprites. The seated body stays fixed while the tail briefly twitches
+Its rebuilt silhouette has a smaller blunt head, a larger rounded torso and
+haunch, forward-facing ear bowls, tucked forepaws, and a thick sweeping brush
+tail rooted low behind the rump. Each part uses authored native-cell sprites. The seated body stays fixed while the tail briefly twitches
 through anchored poses. The bank supports its feet, and the complete character
 remains above the bottom caption on narrow phone screens.
 
@@ -90,9 +98,9 @@ remains above the bottom caption on narrow phone screens.
 
 `src/pixel.js` chooses a small logical frame and an integer number of physical
 display pixels for each scene pixel. `src/main.js` enlarges that complete frame
-with smoothing disabled and aligns its origin to physical pixels. Scenery,
-letters, sprites, and animation share the same grid. Resizing recomposes the
-scene rather than stretching native sprites.
+with smoothing disabled and aligns its origin to physical pixels. Scenery, the central heading, sprites, and animation share the same grid.
+The small signature has its own finer integer display grid. Resizing recomposes
+the scene rather than stretching native sprites.
 
 At a device pixel ratio of 1:
 
@@ -103,8 +111,12 @@ At a device pixel ratio of 1:
 | 2560 × 1080 | 512 × 216 | 5× |
 
 `src/typography.js` retains the exact bitmap geometry of Press Start 2P by Cody
-Boisclair for both labels. Welcome uses a two-cell enlargement; the smaller
-bottom caption uses the font's original native cells. The font, attribution,
+Boisclair for both labels. Welcome uses a two-cell enlargement. `src/caption.js`
+draws the bottom caption after scene enlargement, at half the scenery's physical
+cell size rounded down to a minimum of one display pixel. This halves its size
+without downsampling away any original letter cells. Its centring, outline, and
+shadow remain aligned to whole physical pixels, including at fractional DPR.
+The scene reserves the caption's actual footprint for particles. The font, attribution,
 and SIL Open Font License remain in
 `assets/fonts/`. A real document `<h1>` is available to assistive technology
 and supplies the heading when JavaScript or canvas is unavailable. The bottom
@@ -116,16 +128,24 @@ the editable typography and new brand mask; the legacy Welcome files stay frozen
 ## Motion, recovery, and fallback
 
 `src/scene.js` caches static layers. Four padded, connected cloud sprites travel
-right to left at a shared slow speed. Three separated slots reserve room for
-the widest possible cloud plus an open gap, so later shapes cannot catch up
-or crowd together. Their staggered heights also survive responsive layouts.
-Seeded variation selects each new shape while it is fully offscreen; every
-departing shape clears the left edge before its slot wraps. There is no
-on-screen replacement or reversal. A deterministic shared wind phase drives
-the small hanging canopy tips and falling petals.
-The scene uses 16 desktop and 12 portrait petal sources. Each one turns through
-eight native poses of one to three pixels, with individual flutter and a shared
-breeze. A protected rectangle keeps the particle shapes away from the heading.
+right to left in three ordered depth planes. The two nearer clouds have
+different gentle speed phases, with a reserved gap of at least 20 native cells
+that accounts for their full wind displacement. A slower, muted rear cloud may
+pass behind either of them on a lower track, with at least 13.5 cells of vertical
+separation between visible sprite centres. The reserved foreground gap prevents
+a three-cloud pile-up. Each plane holds one cloud, so a new neighbour cannot
+spawn beside it in the same row.
+Seeded variation selects each new shape only while it is fully offscreen.
+Positions remain deterministic even when animation time is sampled out of order.
+
+A deterministic shared wind phase drives the small hanging canopy tips and
+falling petals. The scene uses 24 desktop and 20 portrait petals, distributed
+across six sources beneath the inner branches and outer tips. Birth positions
+follow the canopy's native coordinates, with only eight cells of horizontal
+spread, so a wider viewport cannot move the sources beyond the tree. Each petal
+turns through eight native poses of one to three pixels, with individual flutter
+and the same rightward breeze. Protected rectangles keep the particle shapes
+away from both labels.
 
 Water marks and lily ripples move by at most one native pixel. Each frame begins
 with the complete background, so motion does not accumulate trails or holes.
@@ -139,7 +159,7 @@ their own phases, with their full movement envelope reserved around the heading.
 Their base flames, the campfire, and firefly glows flicker gently.
 
 The renderer paints synchronously and reveals the canvas only after a complete
-successful frame. It caps animation at 24 FPS, pauses hidden or frozen pages,
+successful scene and caption copy. It caps animation at 24 FPS, pauses hidden or frozen pages,
 and respects reduced motion. Fireflies, the campfire and lanterns remain
 present as a stable reduced-motion still, with the chinchilla's tail at rest.
 A rendering failure restores the

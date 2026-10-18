@@ -11,7 +11,7 @@ function save(name,extension,content){
 }
 // All dependencies execute as one deferred resource. A release never assembles
 // independently cached versions of the renderer, its art, and its lifecycle.
-const modules=['pixel','typography','ambient','art','scene','main'];
+const modules=['pixel','typography','caption','ambient','art','scene','main'];
 const runtime=save('welcome','js',modules.map(name=>
   `/* ${name}.js */\n${fs.readFileSync(path.join(root,'src',name+'.js'),'utf8')}`).join('\n;\n'));
 const stylesheet=save('welcome','css',fs.readFileSync(path.join(root,'src/style.css'),'utf8'));

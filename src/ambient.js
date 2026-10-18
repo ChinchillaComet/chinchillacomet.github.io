@@ -160,7 +160,8 @@
   });
 
   /**
-   * Particle sources/regions use scene fractions, not CSS coordinates.
+   * Petal sources/regions use scene fractions, not CSS coordinates. Explicit
+   * firefly anchors use native cells so their habitat follows the drawn plants.
    * Their origins follow the authored tree and foreground composition.
    * `exclude` is an optional logical-pixel rectangle around the title.
    */
@@ -171,7 +172,7 @@
     const petals = Array.from({ length: options.petalCount ?? (width <= height ? 10 : 16) }, (_, index) => {
       const source = sources[index % sources.length];
       const fall = 1.7 + rng() * 1.55;
-      const x = (source[0] + (rng() - .5) * .12) * width;
+      const x = source[0] * width + (rng() - .5) * (options.petalSpread ?? width * .12);
       const y = source[1] * height + (rng() - .5) * 5;
       const drift = .6 + rng() * .45;
       // Respawn in the canopy after reaching a screen edge. The small margin
@@ -223,8 +224,10 @@
       return best;
     }
     const fireflies = Array.from({ length: options.fireflyCount ?? 7 }, (_,i) => {
-      const anchor = safeAnchor(
+      const requested = options.fireflyAnchors?.[i % options.fireflyAnchors.length];
+      const anchor = safeAnchor(requested?.x ??
         (flyRegion[0] + flyLocations[i%flyLocations.length][0] * (flyRegion[2] - flyRegion[0])) * width,
+      requested?.y ??
         (flyRegion[1] + flyLocations[i%flyLocations.length][1] * (flyRegion[3] - flyRegion[1])) * height);
       return anchor && { ...anchor, phase: i * 1.7, cycle: 6 + (i%3)*.7, glint: i % 4 };
     }).filter(Boolean);

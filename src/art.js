@@ -1,4 +1,4 @@
-/* Native scene artwork: every mark is an opaque, integer-aligned cell. */
+/* Native pixel scenery. All artwork is authored directly on the scene grid. */
 globalThis.NativeSky = (() => {
   'use strict';
   const P=Object.freeze({deep:'#191c36',mid:'#292a44',sky:'#3e3755',haze:'#594563',
@@ -206,15 +206,24 @@ globalThis.NativeClouds = Object.freeze({
   }
 });
 
-/* Three staggered slots share one slow pixel clock. Every slot reserves the
- * widest sprite plus twenty clear native cells, so cloud variants cannot
- * catch up, touch, or crowd a shared row. The offscreen track grows on narrow
- * screens rather than squeezing the artwork together. A variant changes
- * only after the old cloud leaves the left edge and before the next enters
- * from the right. Time and the seed fully determine every frame. */
+/* Slow depth planes share the same authored sprites. The two nearer clouds
+ * have different bounded wind phases around separated positions: they can
+ * change relative speed without catching up or crowding their similar rows.
+ * A slower cloud passes behind them on a lower, muted plane. Its deliberate
+ * vertical offset permits layered overlaps, while the reserved foreground
+ * gap prevents all three clouds stacking into a tower. */
 globalThis.NativeCloudMotion = (() => {
   'use strict';
   const names = Object.freeze(['wide', 'small', 'wisp', 'puff']);
+  const original = globalThis.NativeClouds.wide.palette;
+  const sky = globalThis.NativeSky?.palette;
+  const palettes = Object.freeze({
+    rear: Object.freeze({ '.': null, s: sky?.mid ?? '#292a44',
+      b: sky?.sky ?? '#3e3755', l: original.s, r: original.b }),
+    middle: Object.freeze({ '.': null, s: sky?.sky ?? '#3e3755',
+      b: original.s, l: original.b, r: original.l }),
+    front: Object.freeze({ ...original }),
+  });
   function mix(value) {
     value = Math.imul(value ^ (value >>> 16), 0x21f0aaad);
     value = Math.imul(value ^ (value >>> 15), 0x735a2d97);
@@ -229,62 +238,87 @@ globalThis.NativeCloudMotion = (() => {
     const bitmaps = new Map(), bounds = new Map();
     for (const name of names) {
       const cloud = sprites[name], w = cloud.rows[0].length, h = cloud.rows.length;
-      const bitmap = makeCanvas(w, h), context = bitmap.getContext('2d');
       let left = w, top = h, right = -1, bottom = -1;
-      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-        const colour = cloud.palette[cloud.rows[y][x]];
-        if (!colour) continue;
-        context.fillStyle = colour;
-        context.fillRect(x, y, 1, 1);
-        left = Math.min(left, x); right = Math.max(right, x);
-        top = Math.min(top, y); bottom = Math.max(bottom, y);
+      for (const [plane, palette] of Object.entries(palettes)) {
+        const bitmap = makeCanvas(w, h), context = bitmap.getContext('2d');
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const colour = palette[cloud.rows[y][x]];
+          if (!colour) continue;
+          context.fillStyle = colour;
+          context.fillRect(x, y, 1, 1);
+          left = Math.min(left, x); right = Math.max(right, x);
+          top = Math.min(top, y); bottom = Math.max(bottom, y);
+        }
+        bitmaps.set(`${plane}:${name}`, bitmap);
       }
-      bitmaps.set(name, bitmap);
       bounds.set(name, Object.freeze({ left, top, right, bottom }));
     }
     const maximumWidth = Math.max(...names.map(name => sprites[name].rows[0].length));
     const maximumHeight = Math.max(...names.map(name => sprites[name].rows.length));
-    const speed = .43, minimumGap = 20;
-    // Integer slot spacing and one shared, quantized offset preserve the gap
-    // exactly, including the frame on either side of a wrap.
-    const slotSpacing = Math.max(maximumWidth + minimumGap,
-      Math.ceil((width + maximumWidth + 8) / 3));
-    const distance = slotSpacing * 3, entryX = width + 4;
-    const portrait = width <= height;
-    const phase = entryX - Math.round(width * (portrait ? .36 : .39));
+    const profiles = Object.freeze({
+      rear: { baseSpeed: .31, variation: .03, period: 430, windPhase: 4.2 },
+      middle: { baseSpeed: .44, variation: .045, period: 590, windPhase: 2.1 },
+      front: { baseSpeed: .44, variation: .05, period: 730, windPhase: .3 },
+    });
+    const windMargin = Math.ceil(2 * (profiles.middle.variation * profiles.middle.period
+      + profiles.front.variation * profiles.front.period) / (Math.PI * 2)) + 1;
+    const slotSpacing = Math.max(maximumWidth + 20 + windMargin,
+      Math.ceil((width + maximumWidth + 8) / 2));
+    const entryX = width + 4, distance = slotSpacing * 2;
+    const frontPhase = entryX - Math.round((width - maximumWidth) / 2);
     const lastTop = Math.max(0, Math.floor(height * .44) - maximumHeight);
-    const firstTop = Math.max(0, Math.min(Math.round(height * .25), lastTop - 12));
-    const middleTop = Math.round((firstTop + lastTop) / 2);
+    const depthStep = Math.min(18, lastTop);
+    const frontTop = Math.max(0,
+      Math.min(Math.round(height * .25), lastTop - depthStep));
     const lanes = Object.freeze([
-      { initial: 'wide', offset: 0, top: firstTop },
-      { initial: 'small', offset: -1, top: middleTop },
-      { initial: 'small', offset: 1, top: lastTop },
-    ].map((lane, index) => Object.freeze({
-      ...lane, id: index,
-      phase: (phase + lane.offset * slotSpacing + distance) % distance,
-      salt: mix(seed ^ Math.imul(index + 1, 0x9e3779b9)),
-      period: distance / speed,
-    })));
+      { plane: 'rear', initial: 'small', phase: 29, top: frontTop + depthStep },
+      { plane: 'middle', initial: 'small',
+        phase: (frontPhase - slotSpacing + distance) % distance,
+        top: frontTop + Math.max(0, depthStep - 14) },
+      { plane: 'front', initial: 'wide', phase: frontPhase, top: frontTop },
+    ].map((lane, index) => {
+      const profile = profiles[lane.plane], frequency = Math.PI * 2 / profile.period;
+      return Object.freeze({ ...lane, ...profile, id: index, depth: index,
+        frequency, amplitude: profile.variation / frequency,
+        initialSine: Math.sin(profile.windPhase),
+        salt: mix(seed ^ Math.imul(index + 1, 0x9e3779b9)),
+      });
+    }));
+    function distanceAt(lane, time) {
+      return lane.baseSpeed * time + lane.amplitude
+        * (Math.sin(lane.frequency * time + lane.windPhase) - lane.initialSine);
+    }
+    // The positive speed bounds make this inverse unique. Its fixed bracket
+    // comes from the bounded wind displacement, so direct seeks need no
+    // simulation, accumulated frame deltas, or remembered animation history.
+    function timeAtDistance(lane, target) {
+      let low = (target - 2 * lane.amplitude) / lane.baseSpeed;
+      let high = (target + 2 * lane.amplitude) / lane.baseSpeed;
+      for (let i = 0; i < 32; i++) {
+        const middle = (low + high) / 2;
+        if (distanceAt(lane, middle) < target) low = middle;
+        else high = middle;
+      }
+      return (low + high) / 2;
+    }
     function cloudsAt(time = 0) {
       const t = Number.isFinite(time) ? Math.max(0, time) : 0;
-      const drift = Math.floor(t * speed);
       return lanes.map(lane => {
-        const travel = lane.phase + drift;
+        const travel = lane.phase + Math.floor(distanceAt(lane, t));
         const cycle = Math.floor(travel / distance);
         const name = cycle === 0 ? lane.initial
           : names[mix(lane.salt ^ Math.imul(cycle, 0x85ebca6b)) % names.length];
-        const bitmap = bitmaps.get(name), body = bounds.get(name);
+        const bitmap = bitmaps.get(`${lane.plane}:${name}`), body = bounds.get(name);
         const x = entryX - (travel - cycle * distance);
-        // Centre the different-height sprites on three intentionally distinct
-        // lanes; short viewports move the upper lane up instead of flattening
-        // both lower lanes against the heading clearance boundary.
         const y = lane.top + Math.floor((maximumHeight - bitmap.height) / 2);
+        const nextWrap = timeAtDistance(lane, (cycle + 1) * distance - lane.phase);
+        const previousWrap = timeAtDistance(lane, cycle * distance - lane.phase);
         return Object.freeze({
-          id: lane.id, name, x, y, cycle, speed,
-          width: bitmap.width, height: bitmap.height, bounds: body,
+          id: lane.id, depth: lane.depth, plane: lane.plane, palette: palettes[lane.plane],
+          name, x, y, cycle, width: bitmap.width, height: bitmap.height, bounds: body,
+          speed: lane.baseSpeed + lane.variation * Math.cos(lane.frequency * t + lane.windPhase),
           visible: x + body.right >= 0 && x + body.left < width,
-          cycleDuration: lane.period,
-          nextWrap: ((cycle + 1) * distance - lane.phase) / speed,
+          cycleDuration: nextWrap - previousWrap, nextWrap,
         });
       });
     }
@@ -292,13 +326,13 @@ globalThis.NativeCloudMotion = (() => {
       const frame = cloudsAt(time);
       context.imageSmoothingEnabled = false;
       for (const cloud of frame) {
-        if (cloud.visible) context.drawImage(bitmaps.get(cloud.name), cloud.x, cloud.y);
+        if (cloud.visible) context.drawImage(bitmaps.get(`${cloud.plane}:${cloud.name}`), cloud.x, cloud.y);
       }
       return frame;
     }
     return Object.freeze({ width, height, seed, draw, cloudsAt });
   }
-  return Object.freeze({ create });
+  return Object.freeze({ create, palettes });
 })();
 
 globalThis.NativeLandscape = (() => {
@@ -384,6 +418,50 @@ globalThis.NativeLandscape = (() => {
     rect(ctx,x-1,y-6,1,2,P.cream);
     rect(ctx,x-2,y-3,3,1,P.near);
   }
+  // Three authored cedar profiles, with unequal branch skirts and long tips.
+  // Their connected shelves leave small negative spaces between boughs instead
+  // of filling the grove with repeated triangular stamps or isolated noise.
+  const cedars=Object.freeze([
+    [[0,1],[0,1],[-1,2],[-1,2],[-2,3],[-1,2],[-2,3],[-3,4],
+      [-2,3],[-3,4],[-4,4],[-3,3],[-3,4],[-4,5],[-5,5],[-4,4],
+      [-4,5],[-5,6],[-6,6],[-5,5],[-4,5],[-3,4],[-1,2]],
+    [[0,1],[0,1],[-1,2],[-2,2],[-1,2],[-2,3],[-3,3],[-2,2],
+      [-2,3],[-3,4],[-4,4],[-3,3],[-3,4],[-4,5],[-5,5],[-4,4],[-2,3],[-1,2]],
+    [[0,1],[-1,1],[-1,2],[-2,3],[-1,2],[-2,3],[-3,3],[-2,2],
+      [-3,4],[-4,4],[-3,3],[-2,3],[-1,2]]
+  ]);
+  function cedar(ctx,x,base,kind,colour,lit=false,lean=0){
+    const rows=cedars[kind],top=base-rows.length;
+    for(let row=0;row<rows.length;row++){
+      const [left,right]=rows[row],bend=lean&&row<Math.floor(rows.length*.45)?lean:0;
+      rect(ctx,x+left+bend,top+row,right-left,1,colour);
+    }
+    rect(ctx,x,base-3,1,5,colour);
+    // A few attached, continuous upper bough faces carry cool reflected light.
+    // Each accent sits inside a shelf, with the darker underside left visible.
+    if(lit)for(const row of[kind===0?7:5,kind===0?13:9]){
+      const [left,right]=rows[row];
+      rect(ctx,x+Math.max(0,left),top+row,Math.max(1,right-1),1,P.waterGlow);
+    }
+  }
+  function forest(ctx,w,horizon){
+    const edge=Math.floor(w*.31),farForms=[0,1,0,2,1,0,1,2];
+    // Overlapping crowns recede into a bluer back row. Native tree sizes stay
+    // constant across layouts; only the length of the grove changes.
+    for(let x=-3,index=0;x<edge-5;x+=11,index++){
+      const kind=farForms[index%farForms.length];
+      cedar(ctx,x,horizon-4-(index%3===1?2:0),kind,P.middleShade,false,index%4===1?1:0);
+    }
+    const frontForms=[1,2,0,1,2,1,0,2];
+    for(let x=2,index=0;x<edge-7;x+=14,index++){
+      const kind=frontForms[index%frontForms.length];
+      cedar(ctx,x,horizon-1+(index%3===0?1:0),kind,P.padShadow,index%2===0,index%4===3?-1:0);
+    }
+    // The low continuous understorey joins the trunks to the dark lakeshore.
+    poly(ctx,[[0,horizon-5],[Math.round(edge*.23),horizon-5],
+      [Math.round(edge*.38),horizon-4],[Math.round(edge*.66),horizon-4],
+      [edge-6,horizon-2],[edge,horizon-1],[edge,horizon+1],[0,horizon+1]],P.padShadow);
+  }
   function mountain(ctx, w, horizon) {
     const x = Math.round(w / 2);
     contour(ctx, farRidge, x, horizon, P.far);
@@ -402,6 +480,7 @@ globalThis.NativeLandscape = (() => {
       [[117,-26],[124,-26],[127,-18],[141,-11],[162,-6],[126,-8],[117,-15]],
       [[82,-14],[90,-18],[100,-20],[100,-12],[110,-7],[87,-6]]
     ]) poly(ctx, plane.map(p => [x + p[0], horizon + p[1]]), P.middleShade);
+    forest(ctx,w,horizon);
     // The distant wooded shore is deliberately small: two connected silhouettes.
     const shoreline = [
       [-240,-3],[-208,-4],[-177,-4],[-168,-5],[-151,-5],[-141,-4],[-135,-5],
@@ -506,6 +585,7 @@ globalThis.NativeLandscape = (() => {
     '....g....'
   ];
   const budRows = ['..l..','.lll.','.sls.','..d..','..g..'];
+  const smallLotusRows = ['...l...','.llhll.','sllhlls','.sllls.','..ddd..'];
   function cells(ctx, rows, x, y, palette) {
     for (let yy = 0; yy < rows.length; yy++) {
       for (let xx = 0; xx < rows[yy].length; xx++) {
@@ -521,22 +601,36 @@ globalThis.NativeLandscape = (() => {
     rect(ctx,x+4,y+height,width-7,1,P.near);
     cells(ctx,rows,x,y,{s:P.padShadow,g:P.pad,l:P.padLight});
   }
-  function lilyPads(ctx,w,h,horizon,time) {
-    const depth=h-horizon,portrait=w<=h;
+  function waterPlants(w,h,horizon){
+    const depth=h-horizon,portrait=w<=h,smallPortrait=portrait&&w<180;
+    const moon=Math.round(w*.78);
+    // Broad leaves remain near the viewer. Compact portraits pull the lowest
+    // groups into the visible channel before the two banks and animal meet.
     const groups=[
-      {x:Math.round(w*(portrait?.70:.61)),y:horizon+Math.round(depth*.72),kind:0},
-      {x:Math.round(w*.82),y:horizon+Math.round(depth*.47),kind:1},
-      {x:Math.round(w*(portrait?.84:.80)),
-        y:Math.min(h-15,horizon+Math.round(depth*.84)),kind:2}
+      {x:portrait?Math.min(Math.round(w*.70),w-57):Math.round(w*.61),
+        y:smallPortrait?Math.round(h*.80)-8:
+          horizon+Math.round(depth*.72),kind:0},
+      {x:Math.round(w*.82),
+        y:smallPortrait?Math.min(h-64,horizon+Math.round(depth*.47)):
+          horizon+Math.round(depth*.47),kind:1},
+      {x:Math.round(w*(portrait?.74:.80)),
+        y:smallPortrait?Math.round(h*.80)+13:
+          Math.min(h-15,horizon+Math.round(depth*.84)),kind:2},
+      {x:Math.max(24,moon-35),y:horizon+Math.round(depth*(smallPortrait?.22:.29)),kind:3},
+      {x:Math.min(w-16,moon+33),y:horizon+Math.round(depth*.22),kind:4}
     ];
+    return Object.freeze(groups.map(group=>Object.freeze(group)));
+  }
+  function lilyPads(ctx,w,h,horizon,time) {
+    const groups=waterPlants(w,h,horizon);
     const palette={s:P.lotus,l:P.pink,h:P.cream,d:P.lotusShade,g:P.padShadow};
     const phase=Math.floor(Math.max(time,0)*2)%8;
     const sway=[0,0,1,1,0,0,-1,-1];
     for (const [i,group] of groups.entries()) {
       const {x,y,kind}=group,drift=sway[(phase+i*2)%8];
       // Quiet surface rings sit around stationary leaves and their attached flowers.
-      rect(ctx,x-12-drift,y+7,9,1,P.waterLight);
-      rect(ctx,x+7+drift,y+8,12,1,P.waterLight);
+      rect(ctx,x-(kind>=3?9:12)-drift,y+7,kind>=3?6:9,1,P.waterLight);
+      rect(ctx,x+7+drift,y+8,kind>=3?8:12,1,P.waterLight);
       if(kind===0) {
         leaf(ctx,x+8,y-3,'medium');
         leaf(ctx,x-12,y+4,'small');
@@ -547,13 +641,22 @@ globalThis.NativeLandscape = (() => {
         leaf(ctx,x-10,y+3,'small');
         leaf(ctx,x-2,y,'medium');
         cells(ctx,budRows,x+1,y-3,palette);
-      } else {
+      } else if(kind===2) {
         leaf(ctx,x-9,y,'medium');
         leaf(ctx,x+2,y+3,'small');
+      } else if(kind===3) {
+        leaf(ctx,x-6,y,'medium');
+        leaf(ctx,x+8,y+3,'small');
+        cells(ctx,smallLotusRows,x-3,y-4,palette);
+        rect(ctx,x-2,y+7,3,1,P.lotusShade);
+      } else {
+        leaf(ctx,x-5,y,'small');
+        leaf(ctx,x+2,y+3,'small');
+        cells(ctx,budRows,x-2,y-4,palette);
       }
     }
   }
-  function lake(ctx, w, h, horizon, time, reflectionX) {
+  function lake(ctx, w, h, horizon, time, reflectionX, options = {}) {
     const depth = h - horizon;
     const centre = Math.round(w / 2);
     rect(ctx, 0, horizon, w, depth, P.water);
@@ -585,21 +688,21 @@ globalThis.NativeLandscape = (() => {
     const pavilionX=Math.round(w*.71);
     rect(ctx,pavilionX-1,horizon+3,2,1,P.amber);
     rect(ctx,pavilionX-2,horizon+6,4,1,P.waterLight);
-    lilyPads(ctx,w,h,horizon,time);
+    if(options.plants!==false)lilyPads(ctx,w,h,horizon,time);
   }
   function draw(ctx, w, h, time = 0, options = {}) {
     const horizon = options.horizon === undefined ? Math.round(h * .64) : Math.round(options.horizon);
     const reflectionX = options.reflectionX === undefined ? Math.round(w * .78) : Math.round(options.reflectionX);
     mountain(ctx, w, horizon);
-    lake(ctx, w, h, horizon, time, reflectionX);
+    lake(ctx, w, h, horizon, time, reflectionX, options);
   }
-  return Object.freeze({ draw, mountain, lake, lilyPads, palette: P });
+  return Object.freeze({ draw, mountain, lake, lilyPads, waterPlants, palette: P });
 })();
 
 globalThis.NativeLanterns = (() => {
   'use strict';
   const P=Object.freeze({dark:'#9d4b46',paper:'#db8056',amber:'#ecb779',
-    cream:'#fff1d8',halo:'#8b7566',dim:'#92715f',ink:'#493043'});
+    cream:'#fff1d8',dim:'#92715f',ink:'#493043'});
   // A broad folded top and almost straight paper sides distinguish the bags
   // from round balloons. Light gathers toward their open lower rim.
   const sprites=Object.freeze({
@@ -635,30 +738,8 @@ globalThis.NativeLanterns = (() => {
     far:{bodyHeight:7,lightY:5,amplitude:2,period:16}
   });
   const fill=(c,x,y,w,h,color)=>{c.fillStyle=color;c.fillRect(Math.round(x),Math.round(y),Math.round(w),Math.round(h));};
-  // The outline is fixed: find the neighbouring glow cells once, then animate
-  // their sparse coverage without searching the sprite on every frame.
-  const halos=Object.fromEntries(Object.entries(sprites).map(([name,rows])=>{
-    const w=rows[0].length,bodyHeight=forms[name].bodyHeight,cells=[];
-    const mask=(xx,yy)=>xx>=0&&xx<w&&yy>=0&&yy<bodyHeight&&rows[yy][xx]!=='.';
-    for(let yy=-3;yy<bodyHeight+3;yy++)for(let xx=-3;xx<w+3;xx++){
-      if(mask(xx,yy))continue;
-      let nearest=4;
-      for(let dy=-3;dy<=3;dy++)for(let dx=-3;dx<=3;dx++){
-        const distance=Math.abs(dx)+Math.abs(dy);
-        if(distance<nearest&&mask(xx+dx,yy+dy))nearest=distance;
-      }
-      if(nearest<=3)cells.push({x:xx,y:yy,distance:nearest});
-    }
-    return [name,{bodyHeight,cells}];
-  }));
-  function glow(c,x,y,name,time,phase){
-    const bright=Math.sin(time*.65+phase)>.3;
-    for(const cell of halos[name].cells){
-      const step=(cell.x*3+cell.y*5)&7;
-      if(step<(cell.distance===1?(bright?3:2):cell.distance===2?1:0))
-        fill(c,x+cell.x,y+cell.y,1,1,P.halo);
-    }
-  }
+  // Illumination is contained in the paper panels and open flame. The clean
+  // silhouette needs no detached pixels or grey halo around it.
   function create(w,h,horizon,options={}){
     const portrait=w<=h;
     const arrangements=[
@@ -686,7 +767,7 @@ globalThis.NativeLanterns = (() => {
         else{
           // On a short landscape there is not enough vertical space beneath
           // Welcome. Shift this one lamp past its right edge, preserving room
-          // for the other two and its complete halo and side-to-side sway.
+          // for the other two and its full body margin and side-to-side sway.
           const right=box.x+box.width+horizontalMargin+2;
           const left=box.x-horizontalMargin-2;
           if(right+horizontalMargin<w)cx=right;
@@ -720,7 +801,6 @@ globalThis.NativeLanterns = (() => {
     function drawFloating(c,time=0){
       const colors={d:P.dark,r:P.paper,o:P.amber,h:P.cream,k:P.ink};
       for(const lantern of floatingAt(time)){
-        glow(c,lantern.x,lantern.y,lantern.name,time,lantern.phase);
         for(let y=0;y<lantern.height;y++)for(let x=0;x<lantern.width;x++){
           const color=colors[lantern.rows[y][x]];
           if(color)fill(c,lantern.x+x,lantern.y+y,1,1,color);
@@ -1274,81 +1354,101 @@ globalThis.NativeGarden = (() => {
   return Object.freeze({tree,foreground,wind,campfire,firePosition,palette:P});
 })();
 
-/* Native-cell chinchilla: fixed seated body, independently authored tail poses. */
+/* A seated chinchilla built from separate head, torso, haunch and brush-tail cels.
+ * Anatomy reference: Maryland Zoo and San Diego Zoo chinchilla photographs.
+ * Every painted cell is one native scene pixel; no image plate or rescaling. */
 globalThis.NativeChinchilla = (() => {
   'use strict';
   const palette=Object.freeze({
     d:'#292e40',s:'#41495c',m:'#657185',b:'#728fa9',l:'#bbc5d8',
     h:'#c0cddd',p:'#a36c8d',q:'#755069',e:'#1c1e31',g:'#172b36'
   });
-  // Broad round ears, a short snout and a plump rump distinguish this quiet
-  // chinchilla from a rabbit. Highlight clusters follow the moonward surfaces.
-  const bodyRows=Object.freeze([
-    '...............dddd......',
-    '.......dddd...dbbbld.....',
-    '......dbbbld.dbpppbld....',
-    '.....dbpppblddbpqqpmd....',
-    '.....dbpppblddbpqqpmd....',
-    '.....dbppqmd..dbppmmd....',
-    '......dbbmddbbbmmmmd.....',
-    '......ddbbbbbbbbbmmmd....',
-    '.....dbbllbbbbbbbbmmmd...',
-    '....dbbllbbbbbbbbbbmmmd..',
-    '...dbbllbbbbbbbbbbbmmmd..',
-    '..dbbllbbbbbbbbbbbbmmmd..',
-    '..dbbleebbbbbbbbbbbmmmd..',
-    '.dhhhleebbbbbbbbbbbmmmd..',
-    'ehlhhbbbbbbbbbbbbbbmmmd..',
-    '.dhhhbbbbbbbbbbbbbbmmmd..',
-    '..dlhhbbbbbbbbbbbbbmmmmd.',
-    '..dbllbbbbbbbbbbbbbmmmmd.',
-    '...dbbblbbbbbbbbbbbbmmmd.',
-    '....dsbllbbbbbbbbbbbmmmd.',
-    '.....dsbllbbbbbbbbbbmmmd.',
-    '......dsbllbbbbbbbbbmmmd.',
-    '......dsbllbbbbbbbbbmmmd.',
-    '.......dsblbbbbbbbbbmmmd.',
-    '.......dsmbbbbbbbbbmmmd..',
-    '........dsmbbbbbbmmmmd...',
-    '.........dsmbbbbmmmmd....',
-    '.........dssmmmmssmd.....',
-    '.........ddssmmssmd......',
-    '.........dbllddddblld....',
-    '..........dddd..dddd.....',
+  // The torso is the dominant mass, with a large rounded rump and a separate
+  // curved haunch plane. A narrow pale chest meets the two little forepaws.
+  const torsoRows=Object.freeze([
+    '........ddddd........',
+    '......dmmbbmmdd......',
+    '.....dmmbbblmmdd.....',
+    '....dmmbbbmmmmmmdd...',
+    '...dmmbbbmmmmmmmmsd..',
+    '..dmmbbbmmmmmmmmssmd.',
+    '..dmbbbmmmmmmmmmssmd.',
+    '..dmbbmmmmmmmmmmssmd.',
+    '..dmhlmmmmmmmmmmssmd.',
+    '.dmhhlmmmmmmmmmmssmd.',
+    '.dmhhlmmmmmmmmmmssmd.',
+    '.dmhhlmmmmmssssmmssd.',
+    '.dmhhlmmmmmsbbbmmssd.',
+    '.dmhhlmmmmsbbbbmmssd.',
+    '..dmhlmmmsbbbbbmmssd.',
+    '..dmhlmmmsbbbbmmmssd.',
+    '...dmlmmmsbbbmmmssmd.',
+    '....dmmmmmsmmmmssmd..',
+    '.....dmsmmmssssssmd..',
+    '......dssssssssmd....',
+    '....dmlddddddbmmmd...',
+    '....dddd....ddddd....',
   ]);
+  // Near ear tilts toward the muzzle: broad pink inner bowl on its left side,
+  // grey folded rim at the rear. The smaller far ear is partly hidden behind it.
+  // The short head ends above the chest rather than continuing into one tall blob.
+  const headRows=Object.freeze([
+    '.......ddd..........',
+    '......dblld.........',
+    '.....dblppmd.ddd....',
+    '.....dblpppmdmbmmd..',
+    '.....dbppqpmdbqpmd..',
+    '......dbpqpmdmqpmd..',
+    '......dbbqmmdmmmd...',
+    '.......dbmmdmmmd....',
+    '......dbbllbbmmd....',
+    '.....dbbllbbbbmmd...',
+    '....dbbllbbbbbmmmd..',
+    '...dbblbbbbbbbmmmd..',
+    '...dbllbbbbbbbmmmd..',
+    '..dhhhlbbbbbbbmmmd..',
+    '..edhhhbbbbbbbmmmd..',
+    '...dhhhbbbbbbbmmmd..',
+    '...dbllbbbbbbbmmd...',
+    '....dbllbbbbbmmd....',
+    '.....dsblbbbmmdd....',
+    '......dssmmmdd......',
+    '........dddd........',
+  ]);
+  // The furred brush sweeps outward from the low rump, then curls inward at its
+  // blunt tip. A dark separation from the haunch preserves the bow's silhouette;
+  // wide middle-value clusters describe fur rather than a thin highlighted tube.
   const tailRows=Object.freeze([
-    '.....dddd.....',
-    '....dmmbmd....',
-    '....dmbblmd...',
-    '.....dmbblmd..',
-    '.....dmblmmd..',
-    '......dmblmmd.',
-    '......dmbblmd.',
-    '.......dmblmd.',
-    '.......dmblmmd',
-    '.......dmbbmmd',
-    '......dmblmmd.',
-    '......dmbbmmd.',
-    '.....dmblmmd..',
-    '....dmblmmd...',
-    '....dmbbmmd...',
-    '...dmbbmmd....',
+    '.....dmmbd....',
+    '....dbbmmmd...',
+    '.....dbbmmmmd.',
+    '.......dbbmmmd',
+    '.......dbbmmmd',
+    '........dbbmmd',
+    '.......dmmbmmd',
+    '.......dmbmmmd',
+    '......dmbmmmmd',
+    '......dmbmmmd.',
+    '.....dmbmmmmd.',
+    '.....dmbmmmd..',
+    '....dmbmmmd...',
+    '...dmmmmmd....',
     '..dmmmmd......',
-    '.dmmmmdd......',
-    'dmsmddd.......',
-    'ddddd.........',
+    '..dmmmd.......',
+    '..dmmd........',
+    '...ddd........',
   ]);
-  // The tip flicks sideways and settles in three cel poses. The final nine
-  // rows stay attached to the same haunch; the animal never slides or bobs.
+  // The terminal plume gives two little flicks; the tail base and every body
+  // cell stay fixed. The long idle interval keeps the lakeside posture peaceful.
   const tailOffsets=Object.freeze([
-    Object.freeze([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
-    Object.freeze([2,2,2,2,2,2,1,1,1,1,1,0,0,0,0,0,0,0,0,0]),
-    Object.freeze([-1,-1,-1,-1,-1,-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0]),
+    Object.freeze([0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+    Object.freeze([1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
+    Object.freeze([-1,-1,-1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]),
   ]);
   const twitchFrames=Object.freeze([1,1,2,0,1,0]);
   function poseAt(time=0) {
     const t=Number.isFinite(time)?Math.max(0,time):0;
-    const period=12.8,local=t%period;
+    const period=13.6,local=t%period;
     const active=local>=9.7&&local<10.54;
     const pose=active?twitchFrames[Math.min(5,Math.floor((local-9.7)/.14))]:0;
     return Object.freeze({pose,active,cycle:Math.floor(t/period)});
@@ -1360,25 +1460,28 @@ globalThis.NativeChinchilla = (() => {
     }
   }
   function create(w,h) {
-    const x=w-35,y=h-53;
-    const bounds=Object.freeze({x,y,width:33,height:32});
+    const x=w-37,y=h-55;
+    const bounds=Object.freeze({x,y,width:36,height:34});
     function draw(ctx,time=0) {
       const state=poseAt(time);
-      // A single dark contact row anchors both tiny hind paws to the turf.
-      ctx.fillStyle=palette.g;ctx.fillRect(x+9,y+31,14,1);
-      cells(ctx,tailRows,x+18,y+9,tailOffsets[state.pose]);
-      cells(ctx,bodyRows,x,y);
-      // Short, purposeful whiskers point toward the lake, without a broad
-      // hard outline across the soft cheek.
-      ctx.fillStyle=palette.m;ctx.fillRect(x,y+11,2,1);ctx.fillRect(x,y+17,2,1);
-      ctx.fillStyle=palette.h;ctx.fillRect(x+6,y+12,1,1);
-      // One little forepaw rests against the rounded pale chest.
-      ctx.fillStyle=palette.s;ctx.fillRect(x+10,y+21,3,1);
-      ctx.fillStyle=palette.l;ctx.fillRect(x+10,y+20,2,1);
+      ctx.fillStyle=palette.g;ctx.fillRect(x+11,y+33,16,1);
+      cells(ctx,tailRows,x+22,y+14,tailOffsets[state.pose]);
+      cells(ctx,torsoRows,x+8,y+11);
+      cells(ctx,headRows,x+1,y);
+      // A small black eye with a single cool reflection, a dark blunt nose,
+      // and short whiskers keep the head readable at the native scene size.
+      ctx.fillStyle=palette.e;ctx.fillRect(x+11,y+12,2,2);
+      ctx.fillStyle=palette.h;ctx.fillRect(x+11,y+12,1,1);
+      ctx.fillStyle=palette.m;ctx.fillRect(x+1,y+11,2,1);ctx.fillRect(x+1,y+17,3,1);
+      // The forepaws rest against the chest, visibly separate from the long
+      // hind foot beneath the rounded haunch.
+      ctx.fillStyle=palette.s;ctx.fillRect(x+10,y+23,5,2);
+      ctx.fillStyle=palette.b;ctx.fillRect(x+10,y+23,3,1);
+      ctx.fillStyle=palette.l;ctx.fillRect(x+10,y+24,2,1);
     }
     return Object.freeze({draw,poseAt,bounds});
   }
-  return Object.freeze({create,poseAt,palette,bodyRows,tailRows});
+  return Object.freeze({create,poseAt,palette,headRows,torsoRows,tailRows});
 })();
 
 globalThis.NativeLighting = (() => {

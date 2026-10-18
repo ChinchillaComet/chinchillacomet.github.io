@@ -6,7 +6,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 
 const ROOT = path.resolve(__dirname, '..');
-const runtimeFiles = new Set(['pixel.js', 'typography.js', 'ambient.js', 'art.js', 'scene.js', 'main.js']);
+const runtimeFiles = new Set(['pixel.js', 'typography.js', 'caption.js', 'ambient.js', 'art.js', 'scene.js', 'main.js']);
 // Root runtime files are retained for cached v4 HTML. Exercise the editable
 // implementation that the current release bundles, while HTML stays at root.
 const source = name => fs.readFileSync(path.join(ROOT, runtimeFiles.has(name) ? 'src' : '', name), 'utf8');
@@ -35,15 +35,16 @@ class Events {
 // Art is tested with the native canvas renderer. This harness isolates direct
 // scene initialization, frame scheduling, fallback state, and physical sizing.
 function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
-  hidden = false, failScene = false, failDraw = false, failCopy = false,
+  hidden = false, failScene = false, failDraw = false, failCopy = false, failCaption = false,
   contextAvailable = true, sceneAvailable = true, readyState = 'complete',
   canvasAvailable = true, prerendering = false, resizeObserver = true } = {}) {
   const artContext = vm.createContext({});
   vm.runInContext(source('pixel.js'), artContext, { filename: 'pixel.js' });
   vm.runInContext(source('typography.js'), artContext, { filename: 'typography.js' });
+  vm.runInContext(source('caption.js'), artContext, { filename: 'caption.js' });
   const art = artContext.PixelArt;
-  const draws = [], creations = [], copies = [];
-  const faults = { scene: failScene, draw: failDraw, copy: failCopy };
+  const draws = [], creations = [], copies = [], captionCopies = [];
+  const faults = { scene: failScene, draw: failDraw, copy: failCopy, caption: failCaption };
   const raf = new Map(), queries = new Map(), observers = [];
   let nextId = 1;
   function makeCanvas(w = 300, h = 150) {
@@ -53,12 +54,13 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
       fillRect(...values) { assert.ok(values.every(Number.isInteger)); },
       drawImage(image, x, y, drawWidth, drawHeight) {
         if (faults.copy) throw new Error('Simulated canvas copy failure');
+        if (image.isCaption && faults.caption) throw new Error('Simulated caption copy failure');
         assert.ok([x, y, drawWidth, drawHeight].every(Number.isInteger));
         assert.equal(this.imageSmoothingEnabled, false);
         assert.equal(drawWidth % image.width, 0);
         assert.equal(drawHeight % image.height, 0);
         assert.equal(drawWidth / image.width, drawHeight / image.height);
-        copies.push({ image, x, y, width: drawWidth, height: drawHeight,
+        (image.isCaption ? captionCopies : copies).push({ image, x, y, width: drawWidth, height: drawHeight,
           readyBeforeCopy: container.classList.values.has('is-ready') });
       },
     };
@@ -71,7 +73,8 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
     classList: {
       values: new Set(),
       add(value) {
-        if (value === 'is-ready') assert.ok(copies.length > 0, 'Fallback must remain until a frame reaches the display canvas');
+        if (value === 'is-ready') assert.ok(copies.length > 0 && captionCopies.length > 0,
+          'Fallback must remain until both scene and caption reach the display canvas');
         this.values.add(value);
       },
       remove(value) { this.values.delete(value); },
@@ -104,9 +107,10 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
   }
   if (resizeObserver) window.ResizeObserver = ResizeObserver;
   const sceneApi = {
-    create(w, h, make) {
-      assert.equal(arguments.length, 3, 'Scene construction must not require external image assets');
+    create(w, h, make, options) {
+      assert.equal(arguments.length, 4, 'Scene construction uses native art and caption geometry');
       assert.equal(typeof make, 'function');
+      assert.ok(Object.values(options.captionBounds).every(Number.isFinite));
       if (faults.scene) throw new Error('Simulated scene initialization failure');
       const id = creations.length;
       creations.push({ w, h });
@@ -122,13 +126,21 @@ function makePage({ width = 1440, height = 900, dpr = 1, reducedMotion = false,
   };
   const context = vm.createContext({
     document, window, ResizeObserver, PixelArt: art, PixelTypography: artContext.PixelTypography,
+    PixelCaption: {
+      ...artContext.PixelCaption,
+      create(...args) {
+        const caption = artContext.PixelCaption.create(...args);
+        caption.canvas.isCaption = true;
+        return caption;
+      },
+    },
     PixelScene: sceneAvailable ? sceneApi : undefined,
     requestAnimationFrame(callback) { const id = nextId++; raf.set(id, callback); return id; },
     cancelAnimationFrame(id) { raf.delete(id); },
   });
   vm.runInContext(source('main.js'), context, { filename: 'main.js' });
   return {
-    canvas, container, document, window, draws, creations, copies, queries, raf, art,
+    canvas, container, document, window, draws, creations, copies, captionCopies, queries, raf, art,
     ready() { return container.classList.values.has('is-ready'); },
     setFault(name, active) { faults[name] = active; },
     setSceneAvailable(available) { context.PixelScene = available ? sceneApi : undefined; },

@@ -10,10 +10,10 @@ const { createCanvas, loadImage } = require('@napi-rs/canvas');
 const { ROOT, source } = require('./helpers.cjs');
 
 const scope = vm.createContext({});
-for (const name of ['pixel.js', 'typography.js', 'ambient.js', 'art.js', 'scene.js']) {
+for (const name of ['pixel.js', 'typography.js', 'caption.js', 'ambient.js', 'art.js', 'scene.js']) {
   vm.runInContext(source(name), scope, { filename: name });
 }
-const { PixelArt: art, PixelTypography: font, PixelScene: scenes,
+const { PixelArt: art, PixelTypography: font, PixelCaption: captions, PixelScene: scenes,
   PixelAmbient: ambient, NativeClouds: clouds, NativeLandscape: landscape } = scope;
 const cream = [255, 241, 216, 255];
 const compositions = [[360, 225], [195, 422], [480, 204]];
@@ -127,7 +127,10 @@ test('responsive still and motion frames cover the display with square pixels an
     assert.ok(grid.top + grid.canvasHeight >= grid.physicalHeight);
     assert.ok(grid.canvasWidth - grid.physicalWidth < grid.scale);
     assert.ok(grid.canvasHeight - grid.physicalHeight < grid.scale);
-    const scene = scenes.create(grid.w, grid.h, createCanvas), title = scene.text;
+    const caption = captions.create(grid.physicalWidth, grid.physicalHeight, grid.scale, createCanvas);
+    const scene = scenes.create(grid.w, grid.h, createCanvas, {
+      captionBounds: captions.sceneBounds(caption, grid),
+    }), title = scene.text;
     assert.ok(title.x >= 1 && title.x + title.width < grid.w);
     assert.ok(title.y >= 1 && title.y + title.height < grid.h);
     assert.ok(Number.isInteger(title.scale) && title.scale > 0);
@@ -136,16 +139,26 @@ test('responsive still and motion frames cover the display with square pixels an
     assert.ok(Math.abs(title.x + title.width / 2 - grid.w / 2) <= .5);
     assert.ok(Math.abs(title.y + title.height / 2 - grid.h / 2) <= .5);
     const brand = scene.brand;
-    assert.equal(brand.scale, 1, 'The bottom label uses the smaller native font size');
-    assert.ok(brand.scale < title.scale);
+    const cell = caption.bounds.scale;
+    assert.ok(Number.isInteger(cell) && cell > 0, 'Font pixels must remain whole physical squares');
+    assert.equal(cell, Math.max(1, Math.floor(grid.scale / 2)), 'The signature is approximately half its previous size');
+    assert.ok(brand.scale <= .5 || grid.scale === 1);
     assert.ok(brand.x >= 1 && brand.x + brand.width < grid.w);
     assert.ok(brand.y > grid.h * .85 && brand.y + brand.height <= grid.h - 8);
-    assert.ok(Math.abs(brand.x + brand.width / 2 - grid.w / 2) <= .5);
+    assert.ok(Math.abs(caption.bounds.x + caption.bounds.width / 2 - grid.physicalWidth / 2) <= .5);
     for (const [time, options, label] of [[0, { motion: false }, 'still'], [8.3, {}, 'motion']]) {
       const data = render(scene, time, options);
       assertOpaquePalette(data, label);
       assertGlyphs(data, scene);
-      assertGlyphs(data, scene, font.brand, brand);
+      const output = createCanvas(grid.canvasWidth, grid.canvasHeight), out = output.getContext('2d');
+      const native = createCanvas(grid.w, grid.h);
+      scene.draw(native.getContext('2d'), time, options);
+      out.imageSmoothingEnabled = false;
+      out.drawImage(native, 0, 0, output.width, output.height);
+      out.drawImage(caption.canvas, caption.x - grid.left, caption.y - grid.top);
+      assertGlyphs(pixels(output), { width: output.width }, font.brand, {
+        ...caption.bounds, x: caption.bounds.x - grid.left, y: caption.bounds.y - grid.top,
+      });
     }
   });
 });

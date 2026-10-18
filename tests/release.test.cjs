@@ -11,7 +11,7 @@ const ROOT = path.resolve(__dirname, '..');
 const SITE = new URL('https://chinchillacomet.github.io/');
 const release = JSON.parse(fs.readFileSync(path.join(ROOT, 'assets/release.json'), 'utf8'));
 const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
-const modules = ['pixel', 'typography', 'ambient', 'art', 'scene', 'main'];
+const modules = ['pixel', 'typography', 'caption', 'ambient', 'art', 'scene', 'main'];
 
 // Production v4 URLs are intentionally immutable: an older cached index still
 // loads these six files together. Change src/ and generate a new release instead.
@@ -174,6 +174,23 @@ const frozenV7 = {
 
 test('previously published v7 resource URLs retain their exact bytes for cached documents', () => {
   for (const [relative, digest] of Object.entries(frozenV7)) {
+    const bytes = fs.readFileSync(path.join(ROOT, relative));
+    assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
+  }
+});
+
+const frozenV8 = {
+  "assets/releases/welcome.9c974ba77dc3.js": "9c974ba77dc38e6eeadd1637398515707283891294649bc44fdf54942e71bcaf",
+  "assets/releases/welcome.defd148d84a1.css": "defd148d84a1d69e0f55a5faddc9000cb5c7ca02a28a583a1bce720c76f73a64",
+  "assets/releases/still-landscape.b5d36aa14b69.png": "b5d36aa14b694fed29df18fdb7a83f75b18556460f95ebba57796fac7b82830c",
+  "assets/releases/still-portrait.fb4489bd1cd5.png": "fb4489bd1cd5338d65d5bf6c19129d01aff238401ed59b0384b5488549d88353",
+  "assets/releases/still-panorama.72bb988b4945.png": "72bb988b4945fd5fb1ba3de1f317a3bc6e56455c80bfaa75577e27ed6909fd9b",
+  "assets/releases/preview-desktop.b838d474da70.png": "b838d474da7085dbe909d22904a282f49a24273b1f5b94f6f0962086eef106ea",
+  "assets/releases/preview-phone.cc3e167d5b7c.png": "cc3e167d5b7cb54826428a255409c862ada7d95adfd663f9ba988c585c8605d7"
+};
+
+test('previously published v8 resource URLs retain their exact bytes for cached documents', () => {
+  for (const [relative, digest] of Object.entries(frozenV8)) {
     const bytes = fs.readFileSync(path.join(ROOT, relative));
     assert.equal(sha256(bytes), digest, `${relative}: never overwrite a published content URL`);
   }

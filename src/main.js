@@ -1,7 +1,7 @@
 /* Native scene startup and lifecycle recovery. No reloads, asset requests, or polling. */
 (() => {
   'use strict';
-  let canvas,container,context,motion,scene,logical,grid,densityQuery;
+  let canvas,container,context,motion,scene,logical,caption,grid,densityQuery;
   let initialized=false,pageHidden=false,frozen=false;
   let animation=0,resizeFrame=0,elapsed=0,lastTick=null,previousFrame=null;
   let renderedKey='',retryBudget=1;
@@ -20,7 +20,7 @@
   function suspend() {stopAnimation();cancelResize();}
   function showFallback() {
     stopAnimation();
-    scene=null;logical=null;grid=null;renderedKey='';
+    scene=null;logical=null;caption=null;grid=null;renderedKey='';
     container.classList.remove('is-ready');
     // One next-frame retry can recover a transient drawing failure. Persistent
     // failures then wait for a real load, visibility, restore, or resize event.
@@ -35,6 +35,8 @@
       context.imageSmoothingEnabled=false;
       // A source pixel becomes an exact square of whole physical display pixels.
       context.drawImage(logical,0,0,grid.canvasWidth,grid.canvasHeight);
+      context.drawImage(caption.canvas,caption.x-grid.left,caption.y-grid.top,
+        caption.canvas.width,caption.canvas.height);
       retryBudget=1;
       return true;
     } catch {
@@ -64,13 +66,16 @@
     if(!initialized||suspended())return;
     const bounds=container.getBoundingClientRect();
     if(bounds.width<=0||bounds.height<=0)return;
-    let next,key,nextLogical,nextScene;
+    let next,key,nextLogical,nextCaption,nextScene;
     try {
       next=globalThis.PixelArt.layout(bounds.width,bounds.height,window.devicePixelRatio||1);
       key=[next.physicalWidth,next.physicalHeight,next.dpr].join('|');
       if(scene&&key===renderedKey)return;
       nextLogical=makeCanvas(next.w,next.h);
-      nextScene=globalThis.PixelScene.create(next.w,next.h,makeCanvas);
+      nextCaption=globalThis.PixelCaption.create(next.physicalWidth,next.physicalHeight,next.scale,makeCanvas);
+      nextScene=globalThis.PixelScene.create(next.w,next.h,makeCanvas,{
+        captionBounds:globalThis.PixelCaption.sceneBounds(nextCaption,next)
+      });
       canvas.width=next.canvasWidth;canvas.height=next.canvasHeight;
       canvas.style.width=`${next.canvasWidth/next.dpr}px`;
       canvas.style.height=`${next.canvasHeight/next.dpr}px`;
@@ -78,7 +83,7 @@
     } catch {
       showFallback();return;
     }
-    grid=next;logical=nextLogical;scene=nextScene;
+    grid=next;logical=nextLogical;caption=nextCaption;scene=nextScene;
     if(paint()) {
       renderedKey=key;
       container.classList.add('is-ready');
@@ -90,7 +95,8 @@
     if(initialized)return true;
     if(document.readyState==='loading')return false;
     const target=document.getElementById('scenery');
-    if(!target||!globalThis.PixelScene||!globalThis.PixelArt||!globalThis.PixelTypography)return false;
+    if(!target||!globalThis.PixelScene||!globalThis.PixelArt||!globalThis.PixelTypography
+      ||!globalThis.PixelCaption)return false;
     let drawingContext;
     try {drawingContext=target.getContext('2d',{alpha:false});}catch{return false;}
     if(!drawingContext)return false;

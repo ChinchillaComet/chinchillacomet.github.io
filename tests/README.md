@@ -8,22 +8,24 @@ npm test
 
 `art.test.cjs` loads the editable native renderer from `src/`. It checks exact
 glyphs for Welcome and Chinchilla Comet and the two visible labels, fallback dimensions, complete
-responsive frames, square physical pixels, centred lettering, an opaque palette
+responsive frames, square physical pixels, centred lettering, the signature’s finer whole-pixel grid, an opaque palette
 of at most 56 colours, cloud sprite integrity, meteor direction, deterministic
 water motion, and visible fireflies in animated and reduced-motion scenes.
 
 `effects.test.cjs` checks the independent firefly and petal samplers, distinct
 palettes, connected opaque glows and persistent cores. It verifies that the
-complete animated glow stays outside the heading and campfire, with a stable
-insect count. It also checks the bounded afterglint window and its visibility
+complete animated glow stays outside both labels, the campfire, and the
+chinchilla, with a stable insect count anchored to the actual water plants. It also checks the bounded afterglint window and its visibility
 in the complete scene after the meteor leaves.
 
 `cloud-motion.test.cjs` checks slow leftward movement, seeded variation,
-integer coordinates, guaranteed cloud spacing, and complete offscreen wrapping
+integer coordinates, changing speed, depth order, controlled cloud overlaps,
+and complete offscreen wrapping
 across multiple layouts.
 
 `lifecycle.test.cjs` uses a small mock DOM and controllable frame clock. It covers
-synchronous first paint, fallback and bounded recovery after rendering errors,
+synchronous first paint including the small caption, fallback and bounded
+recovery after scene or caption rendering errors,
 reduced motion, hidden-page timing, resize coalescing, zero-size recovery,
 display-density changes, and the 24 FPS cap. It also exercises delayed DOM or
 dependency availability, load/pageshow recovery, stale callback bookkeeping
@@ -33,7 +35,7 @@ decoding is involved.
 `release.test.cjs` checks the published document's resource references and the
 content hashes in `assets/release.json`. It verifies that the single deferred
 bundle contains the source modules in dependency order and that the frozen
-revision 4 scripts retain their original Git blob hashes and all v5/v6/v7 release
+revision 4 scripts retain their original Git blob hashes and all v5/v6/v7/v8 release
 resources retain their exact published bytes. Keep those legacy
 files and previously published fingerprinted assets for cached older documents.
 

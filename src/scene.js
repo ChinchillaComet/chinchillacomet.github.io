@@ -10,7 +10,7 @@
     panorama:Object.freeze({id:'panorama',width:480,height:204}),
   });
   const variant=(w,h)=>w<=h?assets.portrait:w/h>=1.9?assets.panorama:assets.landscape;
-  function create(width,height,makeCanvas) {
+  function create(width,height,makeCanvas,options={}) {
     const sky=makeCanvas(width,height),ridge=makeCanvas(width,height);
     const garden=makeCanvas(width,height),title=makeCanvas(width,height);
     const sc=sky.getContext('2d'),rc=ridge.getContext('2d');
@@ -28,25 +28,33 @@
       width:font.width*scale,height:font.height*scale,scale};
     for(const [dx,dy]of [[-1,0],[1,0],[0,-1],[0,1],[1,2]])sprite(tc,font.rows,text.x+dx,text.y+dy,{'1':P.ink},scale);
     sprite(tc,font.rows,text.x,text.y,{'1':P.cream},scale);
-    const brand={x:Math.floor((width-font.brand.width)/2),y:height-font.brand.height-10,
-      width:font.brand.width,height:font.brand.height,scale:1};
-    for(const [dx,dy]of [[-1,0],[1,0],[0,-1],[0,1],[1,2]])
-      sprite(tc,font.brand.rows,brand.x+dx,brand.y+dy,{'1':P.ink});
-    sprite(tc,font.brand.rows,brand.x,brand.y,{'1':P.cream});
+    // The smaller signature is drawn after enlargement on its own exact display
+    // grid. Reserve its actual footprint here so ambient particles avoid it.
+    const brand=options.captionBounds??{x:Math.floor((width-font.brand.width/2)/2),
+      y:height-font.brand.height/2-10,width:font.brand.width/2,height:font.brand.height/2,scale:.5};
     const fire=globalThis.NativeGarden.firePosition(width,height);
+    const chinchilla=globalThis.NativeChinchilla?.create(width,height);
+    const waterPlants=globalThis.NativeLandscape.waterPlants?.(width,height,horizon)??[];
+    const fireflyAnchors=waterPlants.length?Array.from({length:portrait?7:9},(_,index)=>{
+      const plant=waterPlants[index%waterPlants.length];
+      const dx=index<waterPlants.length?-7:11;
+      return {x:plant.x+dx,y:plant.y-(index<waterPlants.length?8:13)};
+    }):undefined;
+    // Native canopy coordinates keep the falling sources beneath the inner
+    // branches as well as the outer tips, regardless of the viewport's aspect.
+    const petals=[[20,84],[38,86],[60,80],[83,72],[103,64],[118,56]].map(([x,y])=>
+      [Math.max(5,x+(portrait?-18:-7))/width,(y+(portrait?2:-12))/height]);
     const ambient=globalThis.PixelAmbient.create(width,height,{
       meteor:{start:[.88,.06],end:[portrait?.47:.52,.23]},
-      petalSources:portrait?[[.31,.12],[.45,.16]]:[[.20,.11],[.30,.15]],
-      petalCount:portrait?12:16,
-      fireflyRegion:portrait?[.10,.76,.66,.94]:[.07,.79,.43,.94],fireflyCount:portrait?7:9,
-      fireflyExclude:[{x:fire.x-14,y:fire.y-29,width:28,height:38}],
+      petalSources:petals,petalSpread:8,petalCount:portrait?20:24,
+      fireflyAnchors,fireflyRegion:[.58,.72,.88,.9],fireflyCount:portrait?7:9,
+      fireflyExclude:[{x:fire.x-14,y:fire.y-29,width:28,height:38},chinchilla?.bounds],
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12},
       excludes:[{x:brand.x-3,y:brand.y-3,width:brand.width+6,height:brand.height+6}],
     });
     const lanterns=globalThis.NativeLanterns?.create(width,height,horizon,{
       exclude:{x:text.x-6,y:text.y-6,width:text.width+12,height:text.height+12}
     });
-    const chinchilla=globalThis.NativeChinchilla?.create(width,height);
     function draw(context,time=0,options={}) {
       const t=options.motion===false?0:Math.max(0,time);
       context.imageSmoothingEnabled=false;
@@ -59,8 +67,9 @@
       if(options.motion!==false)ambient.drawMeteorTwinkle(context,t);
       context.drawImage(ridge,0,0);
       lanterns?.drawShore(context,t);
-      globalThis.NativeLandscape.lake(context,width,height,horizon,t,moon.x);
+      globalThis.NativeLandscape.lake(context,width,height,horizon,t,moon.x,{plants:false});
       lanterns?.drawReflections(context,t);
+      globalThis.NativeLandscape.lilyPads(context,width,height,horizon,t);
       lanterns?.drawFloating(context,t);
       context.drawImage(garden,0,0);
       globalThis.NativeGarden.campfire?.(context,width,height,t);
@@ -74,7 +83,8 @@
     return Object.freeze({draw,width,height,text,brand,horizon,moon,variant:variant(width,height).id,
       meteorAt:ambient.meteorAt,twinkleAt:ambient.twinkleAt,particlesAt:ambient.particlesAt,
       petalsAt:ambient.petalsAt,firefliesAt:ambient.firefliesAt,cloudsAt:clouds?.cloudsAt,
-      lanternsAt:lanterns?.floatingAt,chinchillaAt:chinchilla?.poseAt,sky,ridge,garden});
+      lanternsAt:lanterns?.floatingAt,chinchillaAt:chinchilla?.poseAt,
+      waterPlants,chinchillaBounds:chinchilla?.bounds,sky,ridge,garden});
   }
   globalThis.PixelScene=Object.freeze({assets,variant,create});
 })();
